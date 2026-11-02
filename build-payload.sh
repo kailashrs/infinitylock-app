@@ -53,7 +53,7 @@ manifest=root/'app/src/main/kotlin/dev/kailashrs/infinitylock/engine/Payload.kt'
 text=manifest.read_text()
 for name in ('ic98260','ksupatch','insmodf','kernelsu.ko','ksud','run.sh'):
     digest=hashlib.sha256((built/name).read_bytes()).hexdigest()
-    pattern=rf'("payload/{re.escape(name)}", "{re.escape(name)}",\s*")[0-9a-f]{{64}}(")'
+    pattern = r'("payload/' + re.escape(name) + r'", "' + re.escape(name) + r'", *")[0-9a-f]{64}(")'
     text,count=re.subn(pattern,rf'\g<1>{digest}\g<2>',text,count=1)
     if count != 1: raise SystemExit(f'Payload.kt entry missing or duplicated: {name}')
 manifest.write_text(text)
