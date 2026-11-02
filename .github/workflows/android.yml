@@ -20,7 +20,7 @@ jobs:
         with:
           packages: platform-tools
       - name: Install Android build tools
-        run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;29.0.14206865'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.14206865'
       - name: Build pinned runtime payloads
         run: NDK="$ANDROID_HOME/ndk/29.0.14206865" ./build-payload.sh
       - name: Build and lint APK
