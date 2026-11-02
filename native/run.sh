@@ -19,8 +19,8 @@ if grep -q '^kernelsu ' /proc/modules 2>/dev/null || pidof ic98260 >/dev/null 2>
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2
 fi
-mkdir -p "$WORK" || { echo 'REFUSED cannot create per-boot guard'; exit 2; }
-mkdir "$WORK/attempt-$BOOT" 2>/dev/null || { echo 'REFUSED attempt already reserved this boot'; exit 2; }
+# Engine atomically reserves this boot before invoking the app runner.
+[ -d "$WORK/attempt-$BOOT" ] || { echo 'REFUSED boot was not reserved by InfinityLock'; exit 2; }
 [ -x /data/local/tmp/ic98260 ] && [ -x /data/local/tmp/ksupatch ] &&
 [ -x /data/local/tmp/insmodf ] && [ -s /data/local/tmp/kernelsu.ko ] || {
     echo 'REFUSED staged payload missing'

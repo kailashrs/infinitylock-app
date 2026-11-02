@@ -40,6 +40,10 @@ echo "#define UTS_RELEASE \"$TARGET\"" > "$KDIR/include/generated/utsrelease.h"
 make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
 llvm-strip --strip-debug /build/kernelsu/kernel/kernelsu.ko -o /build/payload/kernelsu.ko
 '
+# Check that the freshly built module still satisfies the pinned binder's ELF,
+# ABI and symbol guards before generating an APK from it.
+clang -O1 -g -fsanitize=address,undefined -Wall -Wextra "$WORK/runner/src/ksupatch.c" -o "$WORK/ksupatch-host"
+python3 "$WORK/runner/tests/test_binder.py" "$WORK/payload/kernelsu.ko" "$WORK/ksupatch-host"
 mkdir -p "$SCRIPT_DIR/app/src/main/assets/payload"
 install -m 0644 "$SCRIPT_DIR/native/run.sh" "$WORK/payload/run.sh"
 for binary in ic98260 ksupatch insmodf ksud kernelsu.ko run.sh; do
@@ -51,10 +55,16 @@ import hashlib,re,sys
 root,built=Path(sys.argv[1]),Path(sys.argv[2])
 manifest=root/'app/src/main/kotlin/dev/kailashrs/infinitylock/engine/Payload.kt'
 text=manifest.read_text()
+plain='enum class Payload(val asset: String, val remoteName: String)'
+with_hash='enum class Payload(val asset: String, val remoteName: String, val sha256: String)'
+if text.count(plain) == 1:
+    text=text.replace(plain, with_hash, 1)
+elif text.count(with_hash) != 1:
+    raise SystemExit('Unexpected Payload enum declaration')
 for name in ('ic98260','ksupatch','insmodf','kernelsu.ko','ksud','run.sh'):
     digest=hashlib.sha256((built/name).read_bytes()).hexdigest()
-    pattern = r'("payload/' + re.escape(name) + r'", "' + re.escape(name) + r'", *")[0-9a-f]{64}(")'
-    text,count=re.subn(pattern,rf'\g<1>{digest}\g<2>',text,count=1)
+    pattern = r'("payload/' + re.escape(name) + r'",\s*"' + re.escape(name) + r'")(?:,\s*"[0-9a-f]{64}")?'
+    text,count=re.subn(pattern,lambda match: match.group(1) + ', "' + digest + '"',text)
     if count != 1: raise SystemExit(f'Payload.kt entry missing or duplicated: {name}')
 manifest.write_text(text)
 for name in ('ic98260','ksupatch','insmodf','kernelsu.ko','ksud','run.sh'):
