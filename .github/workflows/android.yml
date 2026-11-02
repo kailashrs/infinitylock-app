@@ -30,3 +30,32 @@ jobs:
         with:
           name: InfinityLock-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: InfinityLock-debug
+          path: apk
+      - name: Publish debug prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ci-${BUILD_NUMBER}"
+          file="InfinityLock-ci-${BUILD_NUMBER}-debug.apk"
+          mv apk/app-debug.apk "$file"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber
+          else
+            gh release create "$tag" "$file" --target "$COMMIT" --prerelease --title "InfinityLock build ${BUILD_NUMBER}" --notes 'Automated debug APK for the supported Vivo X200 Ultra firmware. CI checks passed. Debug signing keys can differ between builds; installing over a differently signed APK requires reinstalling the app. Root attempts and reboot reliability are not tested by CI.'
+          fi
