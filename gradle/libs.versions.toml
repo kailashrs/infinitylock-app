@@ -1,0 +1,22 @@
+[versions]
+# AGP 9.4.x requires Gradle >= 9.6 and JDK 17+; we build with Gradle 9.8.0 + JDK 21.
+agp = "9.4.0"
+kotlin = "2.4.20"
+coreKtx = "1.19.1"
+activityCompose = "1.13.0"
+# Shizuku API (includes rikka.sui); provider brings ShizukuProvider + auto-init glue.
+shizuku = "13.1.5"
+# miuix: Compose Multiplatform UI library (latest stable, built against Compose 1.12.x).
+miuix = "0.9.4"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+miuix = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "miuix" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

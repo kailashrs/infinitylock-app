@@ -1,0 +1,11 @@
+InfinityLock includes the official KernelSU Manager v3.3.1 payloads and an
+ARM64 libksud extracted unchanged from that release. Component license notices
+are in app/src/main/assets/licenses. The bundled timer runner is a
+firmware-specific derivative of the MIT-licensed woshigenm/CVE-2026-98260 and
+other attributed ports; its source preserves the original notices. KernelSU
+module source and license records are under native/ and app/src/main/assets/licenses.
+
+The interface uses miuix, a Compose Multiplatform UI library by
+compose-miuix-ui, licensed under Apache-2.0. See the included license files.
+InfinityLock's original screen layout is inspired by GhostLock-App by YuKongA;
+no GhostLock implementation code is included.
