@@ -3,7 +3,9 @@
 # parameterized multi-boot retries because its ADB controller reconnects.
 set -eu
 
-LOG_PATH=${1:?usage: run.sh <runner-log-path>}
+DEBUG=0
+if [ "${1:-}" = --debug ]; then DEBUG=1; shift; fi
+LOG_PATH=${1:?usage: run.sh [--debug] <runner-log-path>}
 case "$LOG_PATH" in
     /sdcard/InfinityLock/infinitylock-run-*.log) ;;
     *) echo 'invalid runner log path' >&2; exit 2 ;;
@@ -29,6 +31,6 @@ fi
 mkdir -p /sdcard/InfinityLock || { echo 'REFUSED cannot create log folder'; exit 2; }
 touch "$LOG_PATH" || { echo 'REFUSED cannot open runner log'; exit 2; }
 rm -f /data/local/tmp/hkd_base /data/local/tmp/hkd_go /data/local/tmp/hkd_open
-setsid /data/local/tmp/ic98260 fake >>"$LOG_PATH" 2>&1 </dev/null &
+KSU_RUNNER_DEBUG=$DEBUG setsid /data/local/tmp/ic98260 fake >>"$LOG_PATH" 2>&1 </dev/null &
 PID=$!
 echo "RUNNER_STARTED pid=$PID boot=$BOOT log=$LOG_PATH"

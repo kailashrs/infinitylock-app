@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-RUNNER_REF=${RUNNER_REF:-ba4479514181459e035aba808da8579c86915503}
+RUNNER_REF=${RUNNER_REF:-d1da756ec007ff1e5c59b89da34322fba5e757a7}
 KERNELSU_REF=${KERNELSU_REF:-1dfdad51b824d701310f74b9eba5d69a63a9f50b}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
@@ -21,6 +21,7 @@ git -C "$WORK/runner" checkout --quiet "$RUNNER_REF"
 git clone --quiet https://github.com/kailashrs/KernelSU.git "$WORK/kernelsu"
 git -C "$WORK/kernelsu" checkout --quiet "$KERNELSU_REF"
 python3 "$WORK/runner/tests/test_child_logging.py"
+python3 "$WORK/runner/tests/test_debug_logging.py"
 "$CC" -O2 -std=gnu11 -static -fno-stack-protector -fno-pic -no-pie -Wall -Wextra \
   -I"$WORK/runner/src/timer" "$WORK/runner/src/timer/timer.c" -o "$WORK/payload/ic98260" -pthread \
   -Wl,--gc-sections -Wl,-z,norelro

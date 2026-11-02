@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private var deviceLog by mutableStateOf("")
     private var note by mutableStateOf("")
     private var screenStarted by mutableStateOf(false)
+    private var debugLogging by mutableStateOf(false)
     private var autoRoot by mutableStateOf(false)
     private val preferences get() = getSharedPreferences("settings", MODE_PRIVATE)
     private var unsubscribe: (() -> Unit)? = null
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         autoRoot = preferences.getBoolean("auto_root", false)
+        debugLogging = preferences.getBoolean("debug_logging", false)
         if (autoRoot) runCatching { AutoRootService.start(this) }
         enableEdgeToEdge()
         setContent {
@@ -138,6 +140,11 @@ class MainActivity : ComponentActivity() {
                 DropdownItem(text = "Auto-root", selected = autoRoot,
                     summary = if (autoRoot) "On" else "Off", onClick = {
                         if (autoRoot) updateAutoRootPreference(false) else confirmAutoRoot = true
+                    }),
+                DropdownItem(text = "Debug logging", selected = debugLogging,
+                    summary = if (debugLogging) "On" else "Off", enabled = !attempt.busy, onClick = {
+                        debugLogging = !debugLogging
+                        preferences.edit().putBoolean("debug_logging", debugLogging).apply()
                     }),
                 DropdownItem(text = "Reboot", enabled = engine != null && !attempt.busy,
                     onClick = { confirmReboot = true })

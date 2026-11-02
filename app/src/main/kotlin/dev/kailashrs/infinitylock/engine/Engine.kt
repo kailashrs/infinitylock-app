@@ -190,8 +190,9 @@ class Engine(
                 val prepared = exec("mkdir -p /sdcard/InfinityLock && (set -C; : > $logPath)")
                 if (prepared.first != 0) return@thread finish(Outcome.REFUSED, "Cannot create runner log on shared storage; no attempt launched")
                 activeLog = logPath
+                val debugFlag = if (context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("debug_logging", false)) "--debug " else ""
                 val launched = exec(
-                    "sh ${Target.REMOTE_DIR}/run.sh ${shellQuote(logPath)}",
+                    "sh ${Target.REMOTE_DIR}/run.sh $debugFlag${shellQuote(logPath)}",
                 )
                 if (launched.first != 0) return@thread finish(
                     Outcome.REFUSED,

@@ -37,3 +37,5 @@ KernelSU module are built from pinned sources by `build-payload.sh` and GitHub
 Actions. The app does not store those generated binaries in the repository.
 Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner)
 and [your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-self-data).
+
+Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is always retained.
