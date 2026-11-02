@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-RUNNER_REF=${RUNNER_REF:-a85fc73b336272a02a531405d43e2cff178c5cb6}
+RUNNER_REF=${RUNNER_REF:-ba4479514181459e035aba808da8579c86915503}
 KERNELSU_REF=${KERNELSU_REF:-1dfdad51b824d701310f74b9eba5d69a63a9f50b}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
