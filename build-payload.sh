@@ -35,12 +35,9 @@ docker run --rm --platform linux/amd64 -v "$WORK:/build" "$DDK_IMAGE" /bin/bash 
 set -euo pipefail
 KDIR=/opt/ddk/kdir/android15-6.6
 TARGET=6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k
-printf "%s\\n" "$TARGET" > "$KDIR/include/config/kernel.release"
-printf "#define UTS_RELEASE \\\"%s\\\"\\n" "$TARGET" > "$KDIR/include/generated/utsrelease.h"
-make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 \\
-  CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y \\
-  KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false \\
-  KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
+printf '%s\n' "$TARGET" > "$KDIR/include/config/kernel.release"
+printf '#define UTS_RELEASE "%s"\n' "$TARGET" > "$KDIR/include/generated/utsrelease.h"
+make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
 llvm-strip --strip-debug /build/kernelsu/kernel/kernelsu.ko -o /build/payload/kernelsu.ko
 '
 mkdir -p "$SCRIPT_DIR/app/src/main/assets/payload"
