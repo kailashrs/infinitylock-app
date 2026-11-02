@@ -5,7 +5,11 @@ plugins {
 
 android {
     namespace = "dev.kailashrs.infinitylock"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -14,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "dev.kailashrs.infinitylock"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
     }
