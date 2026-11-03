@@ -12,7 +12,7 @@ enum class Payload(val asset: String, val remoteName: String) {
 
 object Target {
     const val KERNEL = "6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k"
-    const val FINGERPRINT = "vivo/PD2454/PD2454:17/CP2A.260605.016_V000L1/261030013318:user/release-keys"
+    const val PRODUCT_VERSION = "PD2454_A_17.2.10.6.W10"
     const val REMOTE_DIR = "/data/local/tmp"
     const val WORK_DIR = "/data/local/tmp/.infinitylock"
     const val MODE_0755 = 493

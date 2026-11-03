@@ -2,6 +2,7 @@ name: Android CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -33,7 +34,7 @@ jobs:
 
   release:
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -42,20 +43,20 @@ jobs:
         with:
           name: InfinityLock-debug
           path: apk
-      - name: Publish debug prerelease
+      - name: Publish tagged debug APK
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
-          BUILD_NUMBER: ${{ github.run_number }}
+          RELEASE_TAG: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="ci-${BUILD_NUMBER}"
-          file="InfinityLock-ci-${BUILD_NUMBER}-debug.apk"
+          tag="$RELEASE_TAG"
+          file="InfinityLock-${tag}-debug.apk"
           mv apk/app-debug.apk "$file"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "$file" --clobber
           else
-            gh release create "$tag" "$file" --target "$COMMIT" --prerelease --title "InfinityLock build ${BUILD_NUMBER}" --notes 'Automated debug APK for the supported Vivo X200 Ultra firmware. CI checks passed. Debug signing keys can differ between builds; installing over a differently signed APK requires reinstalling the app. Root attempts and reboot reliability are not tested by CI.'
+            gh release create "$tag" "$file" --target "$COMMIT" --title "InfinityLock ${tag}" --notes 'Automated debug APK for the supported Vivo X200 Ultra firmware. CI checks passed. Debug signing keys can differ between builds; installing over a differently signed APK requires reinstalling the app. Root attempts and reboot reliability are not tested by CI.'
           fi

@@ -18,17 +18,17 @@ enum class Phase { IDLE, GATES, STAGING, LAUNCHING, RUNNING, FINISHED }
 /** Pre-run gate snapshot for the status card. */
 data class Gates(
     val kernel: String = "",
-    val fingerprint: String = "",
+    val productVersion: String = "",
     val ksuLoaded: Boolean = false,
     val parkedProcess: Boolean = false,
     val attemptedThisBoot: Boolean = false,
     val bootId: String = "",
 ) {
     val kernelMatch: Boolean get() = kernel == Target.KERNEL
-    val fingerprintMatch: Boolean get() = fingerprint == Target.FINGERPRINT
+    val productVersionMatch: Boolean get() = productVersion == Target.PRODUCT_VERSION
 
     val allClear: Boolean
-        get() = bootId.matches(Regex("[0-9a-fA-F-]{36}")) && kernelMatch && fingerprintMatch &&
+        get() = bootId.matches(Regex("[0-9a-fA-F-]{36}")) && kernelMatch && productVersionMatch &&
             !ksuLoaded && !parkedProcess && !attemptedThisBoot
 }
 
@@ -108,11 +108,11 @@ class Engine(
 
     private fun readGates(): Gates {
         val kernel = exec("uname -r").second.trim()
-        val fingerprint = exec("getprop ro.build.fingerprint").second.trim()
+        val productVersion = exec("getprop ro.vivo.system.product.version").second.trim()
         val bootId = exec("cat /proc/sys/kernel/random/boot_id").second.trim()
         return Gates(
             kernel = kernel,
-            fingerprint = fingerprint,
+            productVersion = productVersion,
             ksuLoaded = shell.ksuModuleListed(),
             parkedProcess = shell.processAlive("ic98260"),
             attemptedThisBoot = bootId.isNotBlank() && shell.pathExists(bootMarkerPath(bootId)),
@@ -137,7 +137,7 @@ class Engine(
                 running { copy(phase = Phase.GATES, busy = true) }
                 val gates = readGates()
                 when {
-                    !gates.bootId.matches(Regex("[0-9a-fA-F-]{36}")) || gates.kernel.isEmpty() || !gates.kernelMatch || !gates.fingerprintMatch ->
+                    !gates.bootId.matches(Regex("[0-9a-fA-F-]{36}")) || gates.kernel.isEmpty() || !gates.kernelMatch || !gates.productVersionMatch ->
                         return@thread finish(Outcome.REFUSED, "REFUSED: exact kernel or firmware mismatch")
 
                     gates.ksuLoaded || gates.parkedProcess ->

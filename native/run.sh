@@ -11,12 +11,12 @@ case "$LOG_PATH" in
     *) echo 'invalid runner log path' >&2; exit 2 ;;
 esac
 KERNEL=6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k
-FINGERPRINT=vivo/PD2454/PD2454:17/CP2A.260605.016_V000L1/261030013318:user/release-keys
+PRODUCT_VERSION=PD2454_A_17.2.10.6.W10
 WORK=/data/local/tmp/.infinitylock
 BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
 case "$BOOT" in ????????-????-????-????-????????????) ;; *) echo 'REFUSED invalid boot ID'; exit 2;; esac
 [ "$(uname -r 2>/dev/null || true)" = "$KERNEL" ] || { echo 'REFUSED kernel mismatch'; exit 2; }
-[ "$(getprop ro.build.fingerprint 2>/dev/null || true)" = "$FINGERPRINT" ] || { echo 'REFUSED firmware mismatch'; exit 2; }
+[ "$(getprop ro.vivo.system.product.version 2>/dev/null || true)" = "$PRODUCT_VERSION" ] || { echo 'REFUSED firmware mismatch'; exit 2; }
 if grep -q '^kernelsu ' /proc/modules 2>/dev/null || pidof ic98260 >/dev/null 2>&1; then
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2

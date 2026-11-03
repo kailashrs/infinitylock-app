@@ -25,7 +25,7 @@ Shizuku, then makes one checked attempt. It does not retry or reboot the phone.
 - Device: Vivo X200 Ultra, model V2454A, product PD2454.
 - OS: OriginOS 7, software version `PD2454B_A_17.2.10.6.W10`
   (`ro.vivo.os.version` reports `17.0`), based on Android 17.
-- Firmware fingerprint: `vivo/PD2454/PD2454:17/CP2A.260605.016_V000L1/261030013318:user/release-keys`.
+- Firmware check: `ro.vivo.system.product.version` must be `PD2454_A_17.2.10.6.W10`.
 - Kernel: `6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k`.
 
 The app refuses other kernel or firmware builds. A listed module alone does not
