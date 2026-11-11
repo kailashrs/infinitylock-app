@@ -132,10 +132,24 @@ class Engine(
         }
         thread(isDaemon = true) {
             reset()
-            // Set once staging begins; the finally below cleans artifacts on
-            // every exit path that follows, while pre-staging refusals
-            // (nothing of ours on disk yet) skip cleanup entirely.
-            var stagingStarted = false
+            // True once run.sh launched the runner. Terminal-state helper:
+            // cleans staged artifacts (when safe for this outcome) BEFORE
+            // publishing the final state, so a follow-up attempt can never
+            // race the cleanup, and the foreground service stays up until
+            // the attempt lifecycle - including cleanup - is complete.
+            var launchedOk = false
+            fun finishCleaning(outcome: Outcome, message: String, fatal: String? = null) {
+                val finalOutcome = cleanStagedArtifacts(outcome) { launchedOk }
+                // Cleanup can release a parked runner whose finalize stage
+                // then loads KernelSU; report that instead of the stale park.
+                val finalMessage = if (finalOutcome == outcome) {
+                    message
+                } else {
+                    "Module detected during cleanup; stopped without reboot. " +
+                        "Manager and probe behavior still require manual validation."
+                }
+                finish(finalOutcome, finalMessage, fatal)
+            }
             try {
                 // --- gates (mirror runner REFUSED paths) ---
                 running { copy(phase = Phase.GATES, busy = true) }
@@ -161,11 +175,10 @@ class Engine(
 
                 // --- staging: sha256-verified, mirrors ensure_binary ---
                 running { copy(phase = Phase.STAGING) }
-                stagingStarted = true
                 for (p in Payload.entries) {
                     log("staging ${p.remoteName}")
                     if (stage(p) < 0) {
-                        return@thread finish(
+                        return@thread finishCleaning(
                             Outcome.REFUSED,
                             "staging failed; no exploit launched",
                             fatal = "write failed for ${p.remoteName}",
@@ -174,7 +187,7 @@ class Engine(
                     val actual = exec("sha256sum ${Target.REMOTE_DIR}/${p.remoteName}")
                         .second.trim().substringBefore(' ')
                     if (actual != p.sha256) {
-                        return@thread finish(
+                        return@thread finishCleaning(
                             Outcome.REFUSED,
                             "staging failed; no exploit launched",
                             fatal = "hash mismatch: ${p.remoteName}",
@@ -190,20 +203,21 @@ class Engine(
                 shell.mkdirs(Target.WORK_DIR, Target.MODE_0700)
                 // Atomic per-boot reservation before launch, shared across app processes.
                 val reserved = exec("mkdir ${bootMarkerPath(gates.bootId)}")
-                if (reserved.first != 0) return@thread finish(Outcome.REFUSED, "This boot is already reserved; reboot before another attempt")
+                if (reserved.first != 0) return@thread finishCleaning(Outcome.REFUSED, "This boot is already reserved; reboot before another attempt")
                 val logPath = "/sdcard/InfinityLock/infinitylock-run-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS", java.util.Locale.US).format(java.util.Date())}.log"
                 val prepared = exec("mkdir -p /sdcard/InfinityLock && (set -C; : > $logPath)")
-                if (prepared.first != 0) return@thread finish(Outcome.REFUSED, "Cannot create runner log on shared storage; no attempt launched")
+                if (prepared.first != 0) return@thread finishCleaning(Outcome.REFUSED, "Cannot create runner log on shared storage; no attempt launched")
                 activeLog = logPath
                 val debugFlag = if (context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("debug_logging", false)) "--debug " else ""
                 val launched = exec(
                     "sh ${Target.REMOTE_DIR}/run.sh $debugFlag${shellQuote(logPath)}",
                 )
-                if (launched.first != 0) return@thread finish(
+                if (launched.first != 0) return@thread finishCleaning(
                     Outcome.REFUSED,
                     "Launch failed; boot reservation retained for recovery",
                     fatal = launched.second.trim(),
                 )
+                launchedOk = true
                 log(launched.second.trim())
 
                 // --- watch loop, mirrors the 10s × RUN_WAIT classify loop ---
@@ -222,7 +236,7 @@ class Engine(
                     Outcome.NONE -> {
                         // Window elapsed while still RUNNING: report, never force.
                         collectShellExposureEvidence()
-                        finish(
+                        finishCleaning(
                             Outcome.WINDOW_ELAPSED,
                             "Attempt window elapsed; exploit may still work in the background. " +
                                 "No reboot, retry, or kill was performed.",
@@ -232,7 +246,7 @@ class Engine(
                     else -> {
                         val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LISTED
                         collectShellExposureEvidence()
-                        finish(
+                        finishCleaning(
                             outcome,
                             if (success) {
                                 "Module detected; stopped without reboot. " +
@@ -244,11 +258,16 @@ class Engine(
                     }
                 }
             } catch (t: Throwable) {
-                finish(Outcome.REFUSED, "attempt aborted: ${t.message ?: t.javaClass.simpleName}", fatal = t.toString())
-            } finally {
-                // Every exit path after staging began removes the identifiable
-                // artifacts this app and the runner leave under /data/local/tmp.
-                if (stagingStarted) cleanStagedArtifacts()
+                val detail = "attempt aborted: ${t.message ?: t.javaClass.simpleName}"
+                if (launchedOk) {
+                    // A runner may still be working after launch; never delete
+                    // under it. Artifacts remain until the next boot.
+                    finish(Outcome.CRASH_INCOMPLETE, detail, fatal = t.toString())
+                } else {
+                    // Nothing was launched, so the staged payloads are ours to
+                    // remove.
+                    finishCleaning(Outcome.REFUSED, detail, fatal = t.toString())
+                }
             }
         }
     }
@@ -292,43 +311,187 @@ class Engine(
      * Post-run artifact cleanup. Removes everything this app staged and the
      * runner produced under /data/local/tmp so no identifiable artifacts
      * (exploit binaries, module images, stage/handshake files, liveness
-     * stamp, evidence files) outlive the attempt. Safety rules:
-     *  - never touches a live runner: the hkd_* handshake files are
-     *    load-bearing while ic98260 is still working, so cleanup waits
-     *    (bounded, 60s) for it to exit and skips with a log line otherwise;
-     *    nothing is ever killed;
-     *  - keeps the per-boot reservation under WORK_DIR, which is what
-     *    prevents a second attempt on this boot;
-     *  - removes ksud only when no ksud process is running;
-     *  - removes the boot stamp, so later liveness re-checks report
-     *    not-loaded after cleanup; KernelSU Manager remains the source of
-     *    truth once an attempt has ended.
+     * stamp, evidence files) outlive the attempt.
+     *
+     * Completion is decided by the ATTEMPT OUTCOME, not process liveness:
+     * the runner parks forever (pause()) even after success to hold its
+     * credential pages, so a pidof wait would never terminate. Policy:
+     *  - WINDOW_ELAPSED / CRASH_INCOMPLETE: the runner may still be working
+     *    (or the shell is gone); cleanup is skipped and logged - artifacts
+     *    remain until the next boot. Nothing is ever killed or reaped.
+     *  - terminal outcomes (module live, parked, finalize-complete) and
+     *    launch refusals: the runner either never started or has reached a
+     *    terminal marker; a short grace after a real launch lets it flush
+     *    its last log lines, then cleanup waits for proof that its child
+     *    finished the post-handshake finalize stage before removing
+     *    anything. If that proof never arrives, artifacts remain.
+     *  - the per-boot reservation under WORK_DIR is KEPT: it is what
+     *    prevents a second attempt on this boot.
+     *  - ksud is removed only when no ksud process is running.
+     *  - the boot stamp is removed, so later liveness re-checks report
+     *    not-loaded; KernelSU Manager remains the source of truth once an
+     *    attempt has ended.
      */
-    private fun cleanStagedArtifacts() {
+    private fun cleanStagedArtifacts(outcome: Outcome, launched: () -> Boolean): Outcome {
+        var finalOutcome = outcome
         runCatching {
-            var waits = 0
-            while (waits < 12 && exec("pidof ic98260").second.trim().isNotEmpty()) {
-                Thread.sleep(5_000)
-                waits++
+            when (outcome) {
+                Outcome.WINDOW_ELAPSED, Outcome.CRASH_INCOMPLETE -> {
+                    log("artifact cleanup skipped for $outcome: runner state uncertain; artifacts remain until reboot")
+                    return@runCatching
+                }
+                else -> {}
             }
-            if (exec("pidof ic98260").second.trim().isNotEmpty()) {
-                log("artifact cleanup skipped: runner still active")
-                return
+            val didLaunch = launched()
+            // A refused launch can race with another runner that appeared
+            // after the gates but before run.sh: its refusal leaves that
+            // runner's payloads and handshake files in place. Never delete
+            // shared artifacts we do not own.
+            if (!didLaunch && shell.processAlive("ic98260")) {
+                log("artifact cleanup skipped: another runner owns the staged files")
+                return@runCatching
+            }
+            // The parked parent never touches files again, but a freshly
+            // finished one may still be flushing its final log lines.
+            if (didLaunch) Thread.sleep(10_000)
+            // The privileged child runs a finalize stage (ksud late-load,
+            // module verification, SELinux restore) after the hkd handshake
+            // and may still hold the payloads. Wait for its terminal marker
+            // before deleting anything, and fail closed if the log is
+            // unreadable or the child does not confirm.
+            if (didLaunch && shell.processAlive("ic98260")) {
+                if (!awaitRunnerFileWorkDone()) {
+                    log("artifact cleanup skipped: runner did not confirm file work finished; artifacts remain until reboot")
+                    return@runCatching
+                }
+                // Releasing a parked child can let its finalize stage load
+                // KernelSU. Classify now, while ksu-live.stamp still exists,
+                // so the attempt reports what cleanup actually enabled.
+                val refreshed = classify()
+                if (refreshed == Outcome.MODULE_LISTED || refreshed == Outcome.DONE) {
+                    if (refreshed != finalOutcome) {
+                        log("outcome refreshed: $finalOutcome -> $refreshed after runner completed")
+                    }
+                    finalOutcome = refreshed
+                }
             }
             val ksudRunning = exec("pidof ksud").second.trim().isNotEmpty()
             val names = mutableListOf(
                 "ic98260", "ksupatch", "insmodf", "ksuquery", "ksu_exposure_probe",
                 "kernelsu.ko", "kernelsu-p.ko", "run.sh", "ksu_stage.sh", "ksu_slide",
                 "ksu-live.stamp", "ksu-exposure-root.txt", "ksu-trace.log", "iq.log",
-                "hkd_base", "hkd_go", "hkd_open", "hkd_extras",
+                "hkd_base", "hkd_go", "hkd_go.tmp", "hkd_open", "hkd_extras",
                 "ksupatch_neuter", "ksupatch_skip", "kmsg-this-boot.txt",
             )
             if (!ksudRunning) names.add("ksud")
             val targets = names.joinToString(" ") { "${Target.REMOTE_DIR}/$it" } +
                 " ${Target.REMOTE_DIR}/pstore*.bin"
-            exec("rm -f $targets")
-            log("staged artifacts cleaned (${names.size} entries; ksud kept=$ksudRunning)")
+            val rm = exec("rm -f $targets")
+            if (rm.first == 0) {
+                log("staged artifacts cleaned (${names.size} entries; ksud kept=$ksudRunning)")
+            } else {
+                log("artifact cleanup FAILED rc=${rm.first}: ${rm.second.trim().take(200)}")
+            }
         }
+        return finalOutcome
+    }
+
+    /**
+     * Wait until the runner can no longer touch the staged files.
+     *
+     * The privileged child runs a finalize stage (ksud late-load, module
+     * verification, SELinux restore) after the hkd handshake and exits only
+     * afterwards, so the handshake markers alone are not terminal. A
+     * burst-miss park can also happen while that child is still polling
+     * hkd_go for up to an hour; in that case the parent cannot send the
+     * protocol's release marker and we send it instead.
+     *
+     * Returns true only when a terminal marker proves no more file work
+     * remains. An unreadable or still-empty log is uncertain and returns
+     * false, so the caller keeps the artifacts until reboot. A parked child
+     * or a non-zero child exit is not enough on its own: the parent can
+     * still be writing handshake files, or a detached stage worker can
+     * survive the child.
+     */
+    private fun awaitRunnerFileWorkDone(): Boolean {
+        val logPath = activeLog
+        if (logPath.isEmpty()) return false
+
+        fun snapshot(): String? =
+            runCatching { shell.readFile(logPath, LOG_CAP) }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+        fun parentParked(text: String): Boolean =
+            text.lineSequence().any { it.contains("parking without reap") && !it.contains("child:") }
+
+        // Raw waitpid status in %#x form. The low seven bits are the signal
+        // number: zero means the process exited on its own (any exit code),
+        // which lets the shell reap its foreground helpers. Nonzero means it
+        // was killed and could have left an orphan behind.
+        fun statusOk(token: String): Boolean {
+            val status = token.removePrefix("0x").toULongOrNull(16) ?: return false
+            return (status and 0x7fUL) == 0UL
+        }
+
+        // A stage worker is setsid()-detached and a killed shell can leave a
+        // helper behind. Only a worker that exited on its own proves it
+        // reaped its foreground helpers.
+        fun workersClean(text: String): Boolean =
+            Regex("""ksu stage \(\S+\) worker exit=(\S+)""")
+                .findAll(text).all { statusOk(it.groupValues[1]) }
+
+        fun finalizeClean(text: String): Boolean {
+            val status = Regex("""ksu stage \(finalize\) worker exit=(\S+)""")
+                .findAll(text).lastOrNull()?.groupValues?.get(1) ?: return false
+            if (!statusOk(status)) return false
+            // run_ksu_stage_worker() logs the marker and then calls
+            // module_listed(), which reads ksu-live.stamp. Wait for the
+            // child's post-check daemon line before removing that stamp.
+            return text.contains("[fake] KernelSU Live; stopping fallback daemon") ||
+                text.contains("[fake] module not listed; fallback daemon")
+        }
+
+        fun childExitedCleanly(text: String): Boolean {
+            val status = Regex("""\[\+\] child exit status=(\S+)""")
+                .findAll(text).lastOrNull()?.groupValues?.get(1) ?: return false
+            return statusOk(status)
+        }
+
+        fun finished(text: String): Boolean =
+            // A clean child exit means the child was not killed; a worker
+            // that was killed keeps the artifacts.
+            (childExitedCleanly(text) && workersClean(text)) ||
+                (text.contains("[+] done") && workersClean(text)) ||
+                // A parent park ends the handshake; releasing the child with
+                // END lets it run finalize, whose completed worker is its
+                // last file work. An earlier killed worker still keeps the
+                // artifacts.
+                (parentParked(text) && workersClean(text) && finalizeClean(text)) ||
+                // A burst miss before the child is armed leaves it blocked.
+                (text.contains("burst miss") && !text.contains("hkd:"))
+
+        var text = snapshot() ?: return false
+        if (finished(text)) return true
+
+        // The child unlinks hkd_go even after a zero-byte read, so a
+        // truncate-then-write marker can be lost. Publish it with rename(2)
+        // and republish on later polls until the log confirms receipt.
+        fun releaseParkedParent(now: String) {
+            if (!parentParked(now)) return
+            exec(
+                "printf END > ${Target.REMOTE_DIR}/hkd_go.tmp && " +
+                    "mv -f ${Target.REMOTE_DIR}/hkd_go.tmp ${Target.REMOTE_DIR}/hkd_go",
+            )
+        }
+        releaseParkedParent(text)
+
+        val deadline = System.currentTimeMillis() + 180_000
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(500)
+            text = snapshot() ?: continue
+            if (finished(text)) return true
+            releaseParkedParent(text)
+        }
+        return false
     }
 
     private fun classify(): Outcome {

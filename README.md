@@ -47,11 +47,16 @@ verified through the gated-supercall probe (`ksuquery`) and a boot-scoped
 `ksu-live.stamp`; the unprivileged `ksu_exposure_probe` matrix is collected
 as attempt evidence.
 
-After every attempt that began staging, the app removes the artifacts it and
-the runner leave under `/data/local/tmp` (exploit binaries, module images,
-stage and handshake files, the liveness stamp, evidence files). Cleanup only
-runs once the runner process has exited (bounded wait; nothing is ever
-killed) and keeps the per-boot attempt reservation; KernelSU Manager remains
-the source of truth for module status once an attempt has ended.
+After each attempt the app removes the artifacts it and the runner leave
+under `/data/local/tmp` (exploit binaries, module images, stage and
+handshake files, the liveness stamp, evidence files). Cleanup is driven by
+the attempt outcome - the runner parks forever even after success, so
+process liveness is not a completion signal: terminal outcomes (module
+loaded, parked, finalize-complete) and launch refusals clean up after a
+short grace, while WINDOW_ELAPSED and crashed attempts skip cleanup (the
+runner may still be working; nothing is ever killed or reaped) and leave
+artifacts until the next boot. The per-boot attempt reservation is kept;
+KernelSU Manager remains the source of truth for module status once an
+attempt has ended.
 
 Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is always retained.
