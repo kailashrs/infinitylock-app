@@ -5,6 +5,8 @@ enum class Payload(val asset: String, val remoteName: String) {
     IC98260("payload/ic98260", "ic98260"),
     KSUPATCH("payload/ksupatch", "ksupatch"),
     INSMODF("payload/insmodf", "insmodf"),
+    KSUQUERY("payload/ksuquery", "ksuquery"),
+    KSU_EXPOSURE_PROBE("payload/ksu_exposure_probe", "ksu_exposure_probe"),
     KERNELSU_KO("payload/kernelsu.ko", "kernelsu.ko"),
     KSUD("payload/ksud", "ksud"),
     RUNNER("payload/run.sh", "run.sh"),

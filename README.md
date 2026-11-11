@@ -35,7 +35,16 @@ in KernelSU Manager after the attempt.
 The manager library, timer bootstrap, function binder, insertion helper, and
 KernelSU module are built from pinned sources by `build-payload.sh` and GitHub
 Actions. The app does not store those generated binaries in the repository.
-Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner)
-and [your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-self-data).
+Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner/tree/hardening-validation)
+and [your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-hardening).
+
+Since 1.1.0-rc.1 the payload uses the anti-fingerprinting module profile
+(`CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y`): routine module logging is
+compiled out, the module unlinks itself from `/proc/modules` and kallsyms
+after init, and the supercall fd handshake answers only authorized callers.
+Because a hidden module no longer appears in `/proc/modules`, liveness is
+verified through the gated-supercall probe (`ksuquery`) and a boot-scoped
+`ksu-live.stamp`; the unprivileged `ksu_exposure_probe` matrix is collected
+as attempt evidence.
 
 Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is always retained.

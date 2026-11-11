@@ -50,7 +50,17 @@ class ShellService : IShellService.Stub {
 
     @Keep
     override fun ksuModuleListed(): Boolean =
-        exec("grep -q '^kernelsu ' /proc/modules").exitCode == 0
+        // Hidden-module profile: the hardened module removes itself from
+        // /proc/modules after init, so the runner's stage stamps a
+        // boot-scoped liveness marker once its root-side gated-supercall
+        // verification succeeds. Either signal means KernelSU is live for
+        // this boot; unprivileged callers cannot forge the stamp because it
+        // is compared against the kernel's current boot id.
+        exec(
+            "grep -q '^kernelsu ' /proc/modules || " +
+                "[ \"\$(cat /data/local/tmp/ksu-live.stamp 2>/dev/null)\" = " +
+                "\"\$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)\" ]",
+        ).exitCode == 0
 
     @Keep
     override fun writeStream(pfd: ParcelFileDescriptor?, dir: String, name: String, mode: Int): Long {

@@ -17,17 +17,22 @@ BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
 case "$BOOT" in ????????-????-????-????-????????????) ;; *) echo 'REFUSED invalid boot ID'; exit 2;; esac
 [ "$(uname -r 2>/dev/null || true)" = "$KERNEL" ] || { echo 'REFUSED kernel mismatch'; exit 2; }
 [ "$(getprop ro.vivo.system.product.version 2>/dev/null || true)" = "$PRODUCT_VERSION" ] || { echo 'REFUSED firmware mismatch'; exit 2; }
-if grep -q '^kernelsu ' /proc/modules 2>/dev/null || pidof ic98260 >/dev/null 2>&1; then
+if grep -q '^kernelsu ' /proc/modules 2>/dev/null || \
+   [ "$(cat /data/local/tmp/ksu-live.stamp 2>/dev/null)" = "$BOOT" ] || \
+   pidof ic98260 >/dev/null 2>&1; then
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2
 fi
 # Engine atomically reserves this boot before invoking the app runner.
 [ -d "$WORK/attempt-$BOOT" ] || { echo 'REFUSED boot was not reserved by InfinityLock'; exit 2; }
 [ -x /data/local/tmp/ic98260 ] && [ -x /data/local/tmp/ksupatch ] &&
-[ -x /data/local/tmp/insmodf ] && [ -s /data/local/tmp/kernelsu.ko ] || {
+[ -x /data/local/tmp/insmodf ] && [ -x /data/local/tmp/ksuquery ] &&
+[ -s /data/local/tmp/kernelsu.ko ] || {
     echo 'REFUSED staged payload missing'
     exit 2
 }
+# Reset boot-scoped evidence and liveness markers from previous boots.
+rm -f /data/local/tmp/ksu-exposure-root.txt /data/local/tmp/ksu-live.stamp
 mkdir -p /sdcard/InfinityLock || { echo 'REFUSED cannot create log folder'; exit 2; }
 touch "$LOG_PATH" || { echo 'REFUSED cannot open runner log'; exit 2; }
 rm -f /data/local/tmp/hkd_base /data/local/tmp/hkd_go /data/local/tmp/hkd_open
