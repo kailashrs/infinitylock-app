@@ -132,6 +132,10 @@ class Engine(
         }
         thread(isDaemon = true) {
             reset()
+            // Set once staging begins; the finally below cleans artifacts on
+            // every exit path that follows, while pre-staging refusals
+            // (nothing of ours on disk yet) skip cleanup entirely.
+            var stagingStarted = false
             try {
                 // --- gates (mirror runner REFUSED paths) ---
                 running { copy(phase = Phase.GATES, busy = true) }
@@ -157,6 +161,7 @@ class Engine(
 
                 // --- staging: sha256-verified, mirrors ensure_binary ---
                 running { copy(phase = Phase.STAGING) }
+                stagingStarted = true
                 for (p in Payload.entries) {
                     log("staging ${p.remoteName}")
                     if (stage(p) < 0) {
@@ -240,6 +245,10 @@ class Engine(
                 }
             } catch (t: Throwable) {
                 finish(Outcome.REFUSED, "attempt aborted: ${t.message ?: t.javaClass.simpleName}", fatal = t.toString())
+            } finally {
+                // Every exit path after staging began removes the identifiable
+                // artifacts this app and the runner leave under /data/local/tmp.
+                if (stagingStarted) cleanStagedArtifacts()
             }
         }
     }
@@ -278,6 +287,49 @@ class Engine(
     fun deviceLogSnapshot(): String = runCatching {
         activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty()
     }.getOrDefault("Runner log unavailable: shell disconnected")
+
+    /**
+     * Post-run artifact cleanup. Removes everything this app staged and the
+     * runner produced under /data/local/tmp so no identifiable artifacts
+     * (exploit binaries, module images, stage/handshake files, liveness
+     * stamp, evidence files) outlive the attempt. Safety rules:
+     *  - never touches a live runner: the hkd_* handshake files are
+     *    load-bearing while ic98260 is still working, so cleanup waits
+     *    (bounded, 60s) for it to exit and skips with a log line otherwise;
+     *    nothing is ever killed;
+     *  - keeps the per-boot reservation under WORK_DIR, which is what
+     *    prevents a second attempt on this boot;
+     *  - removes ksud only when no ksud process is running;
+     *  - removes the boot stamp, so later liveness re-checks report
+     *    not-loaded after cleanup; KernelSU Manager remains the source of
+     *    truth once an attempt has ended.
+     */
+    private fun cleanStagedArtifacts() {
+        runCatching {
+            var waits = 0
+            while (waits < 12 && exec("pidof ic98260").second.trim().isNotEmpty()) {
+                Thread.sleep(5_000)
+                waits++
+            }
+            if (exec("pidof ic98260").second.trim().isNotEmpty()) {
+                log("artifact cleanup skipped: runner still active")
+                return
+            }
+            val ksudRunning = exec("pidof ksud").second.trim().isNotEmpty()
+            val names = mutableListOf(
+                "ic98260", "ksupatch", "insmodf", "ksuquery", "ksu_exposure_probe",
+                "kernelsu.ko", "kernelsu-p.ko", "run.sh", "ksu_stage.sh", "ksu_slide",
+                "ksu-live.stamp", "ksu-exposure-root.txt", "ksu-trace.log", "iq.log",
+                "hkd_base", "hkd_go", "hkd_open", "hkd_extras",
+                "ksupatch_neuter", "ksupatch_skip", "kmsg-this-boot.txt",
+            )
+            if (!ksudRunning) names.add("ksud")
+            val targets = names.joinToString(" ") { "${Target.REMOTE_DIR}/$it" } +
+                " ${Target.REMOTE_DIR}/pstore*.bin"
+            exec("rm -f $targets")
+            log("staged artifacts cleaned (${names.size} entries; ksud kept=$ksudRunning)")
+        }
+    }
 
     private fun classify(): Outcome {
         if (!shell.asBinder().isBinderAlive) return Outcome.CRASH_INCOMPLETE
