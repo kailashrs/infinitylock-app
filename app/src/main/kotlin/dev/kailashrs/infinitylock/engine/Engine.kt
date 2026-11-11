@@ -216,7 +216,7 @@ class Engine(
                 when (outcome) {
                     Outcome.NONE -> {
                         // Window elapsed while still RUNNING: report, never force.
-                        collectUnprivilegedExposure()
+                        collectShellExposureEvidence()
                         finish(
                             Outcome.WINDOW_ELAPSED,
                             "Attempt window elapsed; exploit may still work in the background. " +
@@ -226,7 +226,7 @@ class Engine(
 
                     else -> {
                         val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LISTED
-                        collectUnprivilegedExposure()
+                        collectShellExposureEvidence()
                         finish(
                             outcome,
                             if (success) {
@@ -287,18 +287,34 @@ class Engine(
     }
 
     /**
-     * Post-attempt evidence: run the staged exposure probe from this shell
-     * context (Shizuku shell, uid 2000 — an unprivileged view) so the
-     * matrix reflects exactly what any app can observe on a hardened
-     * build, including fd-handshake denial and a clean visibility report.
-     * Output is retained beside the runner log in shared storage;
-     * collection failures are non-fatal and never affect classification.
+     * Post-attempt evidence from this shell context. Note the identity
+     * caveat: the runner inserts KernelSU with allow_shell=1, so the
+     * Shizuku shell (uid 2000) is an AUTHORIZED caller of the gated fd
+     * handshake — this matrix shows an authorized-shell view (a driver fd
+     * and version here are expected), not unprivileged-app denial. The
+     * stage also restores SELinux enforcing only after stamping liveness,
+     * so enforcement is confirmed (bounded wait) first and its state is
+     * recorded in the evidence header; a still-permissive system is
+     * explicitly labeled transitional. Collection failures are non-fatal.
      */
-    private fun collectUnprivilegedExposure() {
+    private fun collectShellExposureEvidence() {
         runCatching {
+            var enforcing = false
+            var waits = 0
+            while (waits < 15) {
+                if (exec("getenforce").second.trim().equals("Enforcing", ignoreCase = true)) {
+                    enforcing = true
+                    break
+                }
+                Thread.sleep(2_000)
+                waits++
+            }
+            val transitional = if (enforcing) "" else " TRANSITIONAL"
             exec(
-                "/data/local/tmp/ksu_exposure_probe " +
-                    "> /sdcard/InfinityLock/infinitylock-exposure-unpriv.txt 2>&1",
+                "echo \"context=authorized_shell enforcement=\$(getenforce)$transitional\" " +
+                    "> /sdcard/InfinityLock/infinitylock-exposure-shell.txt; " +
+                    "/data/local/tmp/ksu_exposure_probe " +
+                    ">> /sdcard/InfinityLock/infinitylock-exposure-shell.txt 2>&1",
             )
         }
     }
