@@ -216,6 +216,7 @@ class Engine(
                 when (outcome) {
                     Outcome.NONE -> {
                         // Window elapsed while still RUNNING: report, never force.
+                        collectUnprivilegedExposure()
                         finish(
                             Outcome.WINDOW_ELAPSED,
                             "Attempt window elapsed; exploit may still work in the background. " +
@@ -225,6 +226,7 @@ class Engine(
 
                     else -> {
                         val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LISTED
+                        collectUnprivilegedExposure()
                         finish(
                             outcome,
                             if (success) {
@@ -282,6 +284,23 @@ class Engine(
         if (shell.ksuModuleListed()) return Outcome.MODULE_LISTED
         val text = activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty().replace("\r", "")
         return classifyLog(text) { shell.processAlive("ic98260") }
+    }
+
+    /**
+     * Post-attempt evidence: run the staged exposure probe from this shell
+     * context (Shizuku shell, uid 2000 — an unprivileged view) so the
+     * matrix reflects exactly what any app can observe on a hardened
+     * build, including fd-handshake denial and a clean visibility report.
+     * Output is retained beside the runner log in shared storage;
+     * collection failures are non-fatal and never affect classification.
+     */
+    private fun collectUnprivilegedExposure() {
+        runCatching {
+            exec(
+                "/data/local/tmp/ksu_exposure_probe " +
+                    "> /sdcard/InfinityLock/infinitylock-exposure-unpriv.txt 2>&1",
+            )
+        }
     }
 
     /**

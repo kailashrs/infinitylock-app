@@ -54,12 +54,14 @@ class ShellService : IShellService.Stub {
         // /proc/modules after init, so the runner's stage stamps a
         // boot-scoped liveness marker once its root-side gated-supercall
         // verification succeeds. Either signal means KernelSU is live for
-        // this boot; unprivileged callers cannot forge the stamp because it
-        // is compared against the kernel's current boot id.
+        // this boot. Both reads must succeed nonempty before the stamp
+        // compares equal: two failed reads yield "" == "" and would
+        // otherwise report a module on a clean boot.
         exec(
-            "grep -q '^kernelsu ' /proc/modules || " +
-                "[ \"\$(cat /data/local/tmp/ksu-live.stamp 2>/dev/null)\" = " +
-                "\"\$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)\" ]",
+            "grep -q '^kernelsu ' /proc/modules || { " +
+                "S=\$(cat /data/local/tmp/ksu-live.stamp 2>/dev/null); " +
+                "B=\$(cat /proc/sys/kernel/random/boot_id 2>/dev/null); " +
+                "[ -n \"\$S\" ] && [ -n \"\$B\" ] && [ \"\$S\" = \"\$B\" ]; }",
         ).exitCode == 0
 
     @Keep
