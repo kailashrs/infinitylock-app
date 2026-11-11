@@ -38,12 +38,17 @@ Actions. The app does not store those generated binaries in the repository.
 Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner/tree/hardening-validation)
 and [your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-hardening).
 
-Since 1.1.0-rc.1 the payload uses the anti-fingerprinting module profile
-(`CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y`): routine module logging is
-compiled out, the module unlinks itself from `/proc/modules` and kallsyms
-after init, and the supercall fd handshake answers only authorized callers.
-Because a hidden module no longer appears in `/proc/modules`, liveness is
-verified through the gated-supercall probe (`ksuquery`) and a boot-scoped
+Since 1.1.0-rc.2 the payload uses the anti-fingerprinting module profile
+(`CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y
+CONFIG_KSU_HIDE_SELINUX_ORACLE=y`): routine module logging is compiled out,
+the module unlinks itself from `/proc/modules` and kallsyms after init, the
+supercall fd handshake answers only authorized callers, and the app_zygote
+selinuxfs policy oracles are closed (`compute_av` is denied and a
+`sel_write_context` kprobe rejects `ksu`/`ksu_*` contexts from non-root
+callers) so an isolated detector process cannot test for KernelSU's SELinux
+types or AVC rules. Because a hidden module no longer appears in
+`/proc/modules`, liveness is verified through the gated-supercall probe
+(`ksuquery`) and a boot-scoped
 `ksu-live.stamp`; the unprivileged `ksu_exposure_probe` matrix is collected
 as attempt evidence.
 

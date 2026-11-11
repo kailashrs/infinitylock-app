@@ -19,8 +19,8 @@ android {
         applicationId = "dev.kailashrs.infinitylock"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0-rc.1"
+        versionCode = 3
+        versionName = "1.1.0-rc.2"
     }
 
     buildTypes {

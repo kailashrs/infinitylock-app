@@ -2,7 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 RUNNER_REF=${RUNNER_REF:-cb5143d890de5237afe4ceb109c42d91bd006dd3}
-KERNELSU_REF=${KERNELSU_REF:-3beaf03789f5926fd262ad3b92d7821d651caee4}
+KERNELSU_REF=${KERNELSU_REF:-91b4edce51466818541060758a573378b9e260b9}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
 MANAGER_SHA256=b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450
@@ -42,7 +42,7 @@ KDIR=/opt/ddk/kdir/android15-6.6
 TARGET=6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k
 echo "$TARGET" > "$KDIR/include/config/kernel.release"
 echo "#define UTS_RELEASE \"$TARGET\"" > "$KDIR/include/generated/utsrelease.h"
-make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
+make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y CONFIG_KSU_HIDE_SELINUX_ORACLE=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
 llvm-strip --strip-debug /build/kernelsu/kernel/kernelsu.ko -o /build/payload/kernelsu.ko
 '
 # Check that the freshly built module still satisfies the pinned binder's ELF,
