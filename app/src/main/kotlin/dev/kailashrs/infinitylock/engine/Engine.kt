@@ -24,11 +24,15 @@ data class Gates(
     val attemptedThisBoot: Boolean = false,
     val bootId: String = "",
 ) {
-    val kernelMatch: Boolean get() = kernel == Target.KERNEL
-    val productVersionMatch: Boolean get() = productVersion == Target.PRODUCT_VERSION
+    val kernelMatch: Boolean get() = Target.SUPPORTED_FIRMWARE.any { it.kernel == kernel }
+    val productVersionMatch: Boolean get() = Target.SUPPORTED_FIRMWARE.any { it.productVersion == productVersion }
+
+    /** Strict pair check: kernel and firmware must belong to the same entry. */
+    val firmwareMatch: Boolean
+        get() = Target.SUPPORTED_FIRMWARE.any { it.kernel == kernel && it.productVersion == productVersion }
 
     val allClear: Boolean
-        get() = bootId.matches(Regex("[0-9a-fA-F-]{36}")) && kernelMatch && productVersionMatch &&
+        get() = bootId.matches(Regex("[0-9a-fA-F-]{36}")) && firmwareMatch &&
             !ksuLoaded && !parkedProcess && !attemptedThisBoot
 }
 
@@ -137,7 +141,7 @@ class Engine(
                 running { copy(phase = Phase.GATES, busy = true) }
                 val gates = readGates()
                 when {
-                    !gates.bootId.matches(Regex("[0-9a-fA-F-]{36}")) || gates.kernel.isEmpty() || !gates.kernelMatch || !gates.productVersionMatch ->
+                    !gates.bootId.matches(Regex("[0-9a-fA-F-]{36}")) || gates.kernel.isEmpty() || !gates.firmwareMatch ->
                         return@thread finish(Outcome.REFUSED, "REFUSED: exact kernel or firmware mismatch")
 
                     gates.ksuLoaded || gates.parkedProcess ->

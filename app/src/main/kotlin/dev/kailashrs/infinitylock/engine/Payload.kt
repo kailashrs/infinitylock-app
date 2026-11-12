@@ -11,8 +11,18 @@ enum class Payload(val asset: String, val remoteName: String) {
 }
 
 object Target {
-    const val KERNEL = "6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k"
-    const val PRODUCT_VERSION = "PD2454_A_17.2.10.6.W10"
+    data class Firmware(val kernel: String, val productVersion: String)
+
+    /**
+     * Accepted (kernel release, vivo product version) pairs, newest first.
+     * The pair must match exactly — a mixed boot (new kernel on old
+     * firmware or vice versa) is not supported.
+     */
+    val SUPPORTED_FIRMWARE: List<Firmware> = listOf(
+        Firmware("6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k", "PD2454_A_17.2.11.5.W10"),
+        Firmware("6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k", "PD2454_A_17.2.10.6.W10"),
+    )
+
     const val REMOTE_DIR = "/data/local/tmp"
     const val WORK_DIR = "/data/local/tmp/.infinitylock"
     const val MODE_0755 = 493

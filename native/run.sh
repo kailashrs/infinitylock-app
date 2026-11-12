@@ -10,13 +10,28 @@ case "$LOG_PATH" in
     /sdcard/InfinityLock/infinitylock-run-*.log) ;;
     *) echo 'invalid runner log path' >&2; exit 2 ;;
 esac
-KERNEL=6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k
-PRODUCT_VERSION=PD2454_A_17.2.10.6.W10
+# Accepted (kernel release, vivo product version) pairs, newest first.
+# A mixed pair (e.g. new kernel on old firmware) must still refuse.
+KERNEL=
+PRODUCT_VERSION=
+FW_OK=0
+for PAIR in \
+    '6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k;PD2454_A_17.2.11.5.W10' \
+    '6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k;PD2454_A_17.2.10.6.W10'
+do
+    K=${PAIR%%;*}
+    V=${PAIR#*;}
+    if [ "$(uname -r 2>/dev/null || true)" = "$K" ] &&
+       [ "$(getprop ro.vivo.system.product.version 2>/dev/null || true)" = "$V" ]
+    then
+        FW_OK=1
+        break
+    fi
+done
+[ "$FW_OK" = 1 ] || { echo 'REFUSED exact kernel or firmware mismatch'; exit 2; }
 WORK=/data/local/tmp/.infinitylock
 BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
 case "$BOOT" in ????????-????-????-????-????????????) ;; *) echo 'REFUSED invalid boot ID'; exit 2;; esac
-[ "$(uname -r 2>/dev/null || true)" = "$KERNEL" ] || { echo 'REFUSED kernel mismatch'; exit 2; }
-[ "$(getprop ro.vivo.system.product.version 2>/dev/null || true)" = "$PRODUCT_VERSION" ] || { echo 'REFUSED firmware mismatch'; exit 2; }
 if grep -q '^kernelsu ' /proc/modules 2>/dev/null || pidof ic98260 >/dev/null 2>&1; then
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2

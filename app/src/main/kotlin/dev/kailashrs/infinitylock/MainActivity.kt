@@ -160,12 +160,12 @@ class MainActivity : ComponentActivity() {
                 Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(20.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Device", fontSize = 20.sp)
-                        Text(when { g == null -> "Not checked"; g.kernelMatch && g.productVersionMatch -> "Supported"; else -> "Unsupported" }, fontSize = 14.sp, color = secondary)
+                        Text(when { g == null -> "Not checked"; g.firmwareMatch -> "Supported"; else -> "Unsupported" }, fontSize = 14.sp, color = secondary)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text("Vivo X200 Ultra", fontSize = 16.sp)
                     Text(g?.kernel?.ifBlank { "Kernel unavailable" } ?: "Connect Shizuku to check firmware", fontSize = 12.sp, color = secondary)
-                    if (g != null && (!g.kernelMatch || !g.productVersionMatch)) {
+                    if (g != null && !g.firmwareMatch) {
                         Text("Firmware does not match the supported build.", fontSize = 13.sp, color = MiuixTheme.colorScheme.error)
                     }
 
