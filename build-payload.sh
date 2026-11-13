@@ -1,25 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-RUNNER_REF=877746c3c9653cd8b42375955dc80b8613648818
-KERNELSU_REF=${KERNELSU_REF:-1dfdad51b824d701310f74b9eba5d69a63a9f50b}
+RUNNER_REF=3b339fbf3efd355a0ee4b6ebb76c164a17fe8019
+KERNELSU_REF=${KERNELSU_REF:-91b4edce51466818541060758a573378b9e260b9}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
 MANAGER_SHA256=b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450
 KSUD_SHA256=4f7d5fd65631915ea579ff406bd9cbe58217f2c91dac6527f5b2f28ad4508171
+PAYLOADS=(ic98260 ksupatch insmodf ksuquery ksu_exposure_probe ksu-status.sh ksud kernelsu.ko run.sh)
+python3 "$SCRIPT_DIR/tests/test_loaded_state.py"
 : "${NDK:?Set NDK to an installed Android NDK r29}"
 case "$(uname -s)" in Darwin) NDK_HOST=darwin-x86_64;; Linux) NDK_HOST=linux-x86_64;; *) exit 1;; esac
 TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/$NDK_HOST/bin"
 CC="$TOOLCHAIN/aarch64-linux-android35-clang"
 STRIP="$TOOLCHAIN/llvm-strip"
 [ -x "$CC" ] && [ -x "$STRIP" ] || { echo "NDK r29 toolchain missing: $TOOLCHAIN" >&2; exit 1; }
-WORK=$(mktemp -d)
+# Keep bind mounts under the checkout: macOS Docker VMs may not share TMPDIR.
+WORK=$(mktemp -d "$SCRIPT_DIR/.payload-build.XXXXXX")
 trap 'python3 -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$WORK"' EXIT
 mkdir -p "$WORK/payload"
 git clone --quiet https://github.com/kailashrs/pd2454-kernelsu-runner.git "$WORK/runner"
 git -C "$WORK/runner" checkout --quiet "$RUNNER_REF"
+RUNNER_COMMIT=$(git -C "$WORK/runner" rev-parse HEAD)
 git clone --quiet https://github.com/kailashrs/KernelSU.git "$WORK/kernelsu"
 git -C "$WORK/kernelsu" checkout --quiet "$KERNELSU_REF"
+KERNELSU_COMMIT=$(git -C "$WORK/kernelsu" rev-parse HEAD)
+# Carry the reviewed one-line quiet-mode fix on the immutable branch pin.
+# This keeps CI reproducible while the same fix is pending in the local fork.
+git -C "$WORK/kernelsu" apply "$SCRIPT_DIR/native/patches/quiet-shell-init.patch"
+python3 "$SCRIPT_DIR/tests/test_quiet_init.py" "$WORK/kernelsu"
 python3 "$WORK/runner/tests/test_child_logging.py"
 python3 "$WORK/runner/tests/test_debug_logging.py"
 "$CC" -O2 -std=gnu11 -static -fno-stack-protector -fno-pic -no-pie -Wall -Wextra \
@@ -27,7 +36,10 @@ python3 "$WORK/runner/tests/test_debug_logging.py"
   -Wl,--gc-sections -Wl,-z,norelro
 "$CC" -O2 -static -Wall -Wextra "$WORK/runner/src/ksupatch.c" -o "$WORK/payload/ksupatch"
 "$CC" -O2 -static -Wall -Wextra "$WORK/runner/src/insmodf.c" -o "$WORK/payload/insmodf"
-for binary in ic98260 ksupatch insmodf; do "$STRIP" "$WORK/payload/$binary"; done
+for helper in ksuquery ksu_exposure_probe; do
+  "$CC" -O2 -static -Wall -Wextra "$WORK/runner/src/$helper.c" -o "$WORK/payload/$helper"
+done
+for binary in ic98260 ksupatch insmodf ksuquery ksu_exposure_probe; do "$STRIP" "$WORK/payload/$binary"; done
 curl --fail --location --silent --show-error "$MANAGER_URL" -o "$WORK/manager.apk"
 echo "$MANAGER_SHA256  $WORK/manager.apk" | shasum -a 256 -c -
 unzip -p "$WORK/manager.apk" lib/arm64-v8a/libksud.so > "$WORK/payload/ksud"
@@ -38,22 +50,25 @@ KDIR=/opt/ddk/kdir/android15-6.6
 TARGET=6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k
 echo "$TARGET" > "$KDIR/include/config/kernel.release"
 echo "#define UTS_RELEASE \"$TARGET\"" > "$KDIR/include/generated/utsrelease.h"
-make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
+make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y CONFIG_KSU_HIDE_SELINUX_ORACLE=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
 llvm-strip --strip-debug /build/kernelsu/kernel/kernelsu.ko -o /build/payload/kernelsu.ko
 '
+python3 "$SCRIPT_DIR/tests/check_hardening_module.py" --nm "$TOOLCHAIN/llvm-nm" "$WORK/payload/kernelsu.ko"
 # Check that the freshly built module still satisfies the pinned binder's ELF,
 # ABI and symbol guards before generating an APK from it.
 clang -O1 -g -fsanitize=address,undefined -Wall -Wextra "$WORK/runner/src/ksupatch.c" -o "$WORK/ksupatch-host"
 python3 "$WORK/runner/tests/test_binder.py" "$WORK/payload/kernelsu.ko" "$WORK/ksupatch-host"
 mkdir -p "$SCRIPT_DIR/app/src/main/assets/payload"
 install -m 0644 "$SCRIPT_DIR/native/run.sh" "$WORK/payload/run.sh"
-for binary in ic98260 ksupatch insmodf ksud kernelsu.ko run.sh; do
+install -m 0644 "$SCRIPT_DIR/native/ksu-status.sh" "$WORK/payload/ksu-status.sh"
+for binary in "${PAYLOADS[@]}"; do
   install -m 0644 "$WORK/payload/$binary" "$SCRIPT_DIR/app/src/main/assets/payload/$binary"
 done
-python3 - "$SCRIPT_DIR" "$WORK/payload" <<'PY2'
+python3 - "$SCRIPT_DIR" "$WORK/payload" "$RUNNER_COMMIT" "$KERNELSU_COMMIT" "$DDK_IMAGE" "${PAYLOADS[@]}" <<'PY2'
 from pathlib import Path
-import hashlib,re,sys
+import hashlib,json,re,sys
 root,built=Path(sys.argv[1]),Path(sys.argv[2])
+names=sys.argv[6:]
 manifest=root/'app/src/main/kotlin/dev/kailashrs/infinitylock/engine/Payload.kt'
 text=manifest.read_text()
 plain='enum class Payload(val asset: String, val remoteName: String)'
@@ -62,12 +77,20 @@ if text.count(plain) == 1:
     text=text.replace(plain, with_hash, 1)
 elif text.count(with_hash) != 1:
     raise SystemExit('Unexpected Payload enum declaration')
-for name in ('ic98260','ksupatch','insmodf','kernelsu.ko','ksud','run.sh'):
+for name in names:
     digest=hashlib.sha256((built/name).read_bytes()).hexdigest()
     pattern = r'("payload/' + re.escape(name) + r'",\s*"' + re.escape(name) + r'")(?:,\s*"[0-9a-f]{64}")?'
     text,count=re.subn(pattern,lambda match: match.group(1) + ', "' + digest + '"',text)
     if count != 1: raise SystemExit(f'Payload.kt entry missing or duplicated: {name}')
 manifest.write_text(text)
-for name in ('ic98260','ksupatch','insmodf','kernelsu.ko','ksud','run.sh'):
+provenance={
+    'runner_commit':sys.argv[3], 'kernelsu_commit':sys.argv[4], 'ddk_image':sys.argv[5],
+    'kernelsu_patches':{'quiet-shell-init.patch':hashlib.sha256((root/'native/patches/quiet-shell-init.patch').read_bytes()).hexdigest()},
+    'kernel_release':'6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k',
+    'hardening':{'quiet':True,'hide_module':True,'hide_selinux_oracle':True},
+    'payload_sha256':{name:hashlib.sha256((built/name).read_bytes()).hexdigest() for name in names},
+}
+(root/'app/src/main/assets/payload/provenance.json').write_text(json.dumps(provenance,indent=2)+'\n')
+for name in names:
     print(name,hashlib.sha256((built/name).read_bytes()).hexdigest())
 PY2

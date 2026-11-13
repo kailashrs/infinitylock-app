@@ -16,6 +16,7 @@ KERNEL=
 PRODUCT_VERSION=
 FW_OK=0
 for PAIR in \
+    '6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k;PD2454_A_17.2.12.0.W10' \
     '6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k;PD2454_A_17.2.11.5.W10' \
     '6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k;PD2454_A_17.2.10.6.W10'
 do
@@ -32,7 +33,11 @@ done
 WORK=/data/local/tmp/.infinitylock
 BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
 case "$BOOT" in ????????-????-????-????-????????????) ;; *) echo 'REFUSED invalid boot ID'; exit 2;; esac
-if grep -q '^kernelsu ' /proc/modules 2>/dev/null || pidof ic98260 >/dev/null 2>&1; then
+[ -x /data/local/tmp/ksu-status.sh ] || { echo 'REFUSED loaded-state helper missing'; exit 2; }
+status=0
+sh /data/local/tmp/ksu-status.sh || status=$?
+[ "$status" -le 1 ] || { echo 'REFUSED loaded state unavailable'; exit 2; }
+if [ "$status" -eq 0 ] || pidof ic98260 >/dev/null 2>&1; then
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2
 fi
