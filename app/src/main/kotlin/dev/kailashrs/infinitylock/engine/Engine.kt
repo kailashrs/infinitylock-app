@@ -9,7 +9,7 @@ import kotlin.concurrent.thread
 
 /** Result classifier outputs — same set as the runner's classify(). */
 enum class Outcome {
-    NONE, REFUSED, MODULE_LISTED, DONE, COMPLETE_NO_KSU,
+    NONE, REFUSED, MODULE_LOADED, DONE, COMPLETE_NO_KSU,
     PARK_BURST, PARK_OTHER, CRASH_INCOMPLETE, WINDOW_ELAPSED,
 }
 
@@ -53,7 +53,7 @@ data class Attempt(
  *
  *  - exact kernel/firmware gate + fresh-boot gate (no loaded KernelSU module,
  *    no parked exploit process, one attempt per boot_id)
- *  - sha256-verified staging of the five payloads (no manager APK)
+ *  - sha256-verified staging of runtime payloads (no manager APK)
  *  - exactly ONE detached (setsid) launch attempt; the exploit survives the
  *    app being killed
  *  - park-don't-kill: this code never kills or reaps anything; a parked
@@ -66,6 +66,7 @@ class Engine(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
+    private val statusLock = Any()
     private var serviceUpdate: ((Attempt) -> Unit)? = null
     fun observeService(callback: ((Attempt) -> Unit)?) { serviceUpdate = callback }
     private var update: ((Attempt) -> Unit)? = null
@@ -114,17 +115,32 @@ class Engine(
         val kernel = exec("uname -r").second.trim()
         val productVersion = exec("getprop ro.vivo.system.product.version").second.trim()
         val bootId = exec("cat /proc/sys/kernel/random/boot_id").second.trim()
+        val supported = Target.SUPPORTED_FIRMWARE.any {
+            it.kernel == kernel && it.productVersion == productVersion
+        }
         return Gates(
             kernel = kernel,
             productVersion = productVersion,
-            ksuLoaded = shell.ksuModuleListed(),
+            ksuLoaded = supported && ksuLoaded(),
             parkedProcess = shell.processAlive("ic98260"),
-            attemptedThisBoot = bootId.isNotBlank() && shell.pathExists(bootMarkerPath(bootId)),
+            attemptedThisBoot = bootId.isNotBlank() &&
+                (preferences.getString("attempt_boot", "") == bootId || shell.pathExists(bootMarkerPath(bootId))),
             bootId = bootId,
         )
     }
 
     private fun bootMarkerPath(bootId: String): String = "${Target.WORK_DIR}/attempt-$bootId"
+
+    private fun ksuLoaded(): Boolean = synchronized(statusLock) {
+        // Stage only read-only status helpers before gates. Neither the
+        // bootstrap nor the module loader is executed during this check.
+        for (p in listOf(Payload.KSUQUERY, Payload.KSU_STATUS)) {
+            check(ensurePayload(p)) {
+                "Cannot stage verified KernelSU status helper ${p.remoteName}"
+            }
+        }
+        shell.ksuModuleListed()
+    }
 
     // ------------------------------------------------------------- attempt
 
@@ -163,20 +179,11 @@ class Engine(
                 running { copy(phase = Phase.STAGING) }
                 for (p in Payload.entries) {
                     log("staging ${p.remoteName}")
-                    if (stage(p) < 0) {
+                    if (!ensurePayload(p)) {
                         return@thread finish(
                             Outcome.REFUSED,
                             "staging failed; no exploit launched",
-                            fatal = "write failed for ${p.remoteName}",
-                        )
-                    }
-                    val actual = exec("sha256sum ${Target.REMOTE_DIR}/${p.remoteName}")
-                        .second.trim().substringBefore(' ')
-                    if (actual != p.sha256) {
-                        return@thread finish(
-                            Outcome.REFUSED,
-                            "staging failed; no exploit launched",
-                            fatal = "hash mismatch: ${p.remoteName}",
+                            fatal = "verified staging failed for ${p.remoteName}",
                         )
                     }
                 }
@@ -190,6 +197,9 @@ class Engine(
                 // Atomic per-boot reservation before launch, shared across app processes.
                 val reserved = exec("mkdir ${bootMarkerPath(gates.bootId)}")
                 if (reserved.first != 0) return@thread finish(Outcome.REFUSED, "This boot is already reserved; reboot before another attempt")
+                check(preferences.edit().putString("attempt_boot", gates.bootId).commit()) {
+                    "Cannot persist the current-boot attempt reservation"
+                }
                 val logPath = "/sdcard/InfinityLock/infinitylock-run-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss-SSS", java.util.Locale.US).format(java.util.Date())}.log"
                 val prepared = exec("mkdir -p /sdcard/InfinityLock && (set -C; : > $logPath)")
                 if (prepared.first != 0) return@thread finish(Outcome.REFUSED, "Cannot create runner log on shared storage; no attempt launched")
@@ -228,7 +238,7 @@ class Engine(
                             }
 
                     else -> {
-                        val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LISTED
+                        val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LOADED
                         finish(
                             outcome,
                             if (success) {
@@ -244,6 +254,13 @@ class Engine(
                 finish(Outcome.REFUSED, "attempt aborted: ${t.message ?: t.javaClass.simpleName}", fatal = t.toString())
             }
         }
+    }
+
+    private fun ensurePayload(p: Payload): Boolean = synchronized(statusLock) {
+        val path = "${Target.REMOTE_DIR}/${p.remoteName}"
+        fun remoteHash() = exec("sha256sum $path").second.trim().substringBefore(' ')
+        // Do not overwrite a status executable that another query may use.
+        remoteHash() == p.sha256 || (stage(p) >= 0 && remoteHash() == p.sha256)
     }
 
     /** Pipe asset → shell-writable target under /data/local/tmp. */
@@ -270,7 +287,7 @@ class Engine(
     /** Non-blocking status probe; emits the classifier result to the UI. */
     fun classifyNow(onOutcome: (Outcome, String) -> Unit) {
         thread(isDaemon = true) {
-            val o = classify()
+            val o = runCatching { classify() }.getOrDefault(Outcome.CRASH_INCOMPLETE)
             val note = describe(o)
             main.post { onOutcome(o, note) }
         }
@@ -283,7 +300,7 @@ class Engine(
 
     private fun classify(): Outcome {
         if (!shell.asBinder().isBinderAlive) return Outcome.CRASH_INCOMPLETE
-        if (shell.ksuModuleListed()) return Outcome.MODULE_LISTED
+        if (ksuLoaded()) return Outcome.MODULE_LOADED
         val text = activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty().replace("\r", "")
         return classifyLog(text) { shell.processAlive("ic98260") }
     }
@@ -313,7 +330,7 @@ class Engine(
     }
 
     private fun describe(o: Outcome): String = when (o) {
-        Outcome.MODULE_LISTED, Outcome.DONE ->
+        Outcome.MODULE_LOADED, Outcome.DONE ->
             "KernelSU detected. Verify Live state and Working status in Manager."
         Outcome.COMPLETE_NO_KSU ->
             "Run completed end-to-end (early-K + remaining slots + finalize) without loading: full evidence."

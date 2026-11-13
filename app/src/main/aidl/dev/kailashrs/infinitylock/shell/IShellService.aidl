@@ -27,7 +27,7 @@ interface IShellService {
     /** Cheap, dependency-free "is the parked exploit process alive" check (pgrep -f). */
     boolean processAlive(in String pattern) = 3;
 
-    /** Whether the KernelSU module is listed in /proc/modules. */
+    /** Loaded-state evidence from the module list, root query or current-boot stamp. */
     boolean ksuModuleListed() = 4;
 
     /**

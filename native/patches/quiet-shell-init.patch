@@ -1,0 +1,12 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -207,7 +207,7 @@ int __init kernelsu_init(void)
+     }
+ #endif
+     if (allow_shell) {
+-        pr_alert("shell is allowed at init!");
++        pr_info("shell is allowed at init!");
+     }
+ 
+ #ifdef CONFIG_KSU_SELF_RESOLVED_DATA

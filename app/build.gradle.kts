@@ -41,7 +41,7 @@ android {
 
     androidResources {
         // Keep payload binaries uncompressed so on-device sha256 staging is byte-exact.
-        noCompress += listOf("payload/ic98260", "payload/ksupatch", "payload/insmodf", "payload/ksud", "payload/kernelsu.ko", "payload/run.sh")
+        noCompress += listOf("payload/ic98260", "payload/ksupatch", "payload/insmodf", "payload/ksuquery", "payload/ksu_exposure_probe", "payload/ksu-status.sh", "payload/ksud", "payload/kernelsu.ko", "payload/run.sh")
     }
 }
 
@@ -60,7 +60,7 @@ val verifyPayloads by tasks.registering {
     val payloadDir = layout.projectDirectory.dir("src/main/assets/payload")
     inputs.dir(payloadDir)
     doLast {
-        listOf("ic98260", "ksupatch", "insmodf", "kernelsu.ko", "ksud", "run.sh").forEach { name ->
+        listOf("ic98260", "ksupatch", "insmodf", "ksuquery", "ksu_exposure_probe", "ksu-status.sh", "kernelsu.ko", "ksud", "run.sh", "provenance.json").forEach { name ->
             val file = payloadDir.file(name).asFile
             check(file.isFile && file.length() > 0) {
                 "Missing $name. Run ../build-payload.sh to build the pinned runtime payloads."

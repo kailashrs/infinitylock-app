@@ -10,7 +10,7 @@ import java.io.File
  * Shizuku user service. Instantiated inside the Shizuku server process with
  * uid 2000 (adb/shell) or 0 (root) — the same Linux/SELinux context as ADB.
  *
- * IMPORTANT: this process must never kill, reap or reboot anything. It only
+ * IMPORTANT: this process must never kill/reap a bootstrap or reboot. It only
  * stages, launches with setsid (detached, survives app death), observes, and
  * classifies. Parked exploitation processes are cleaned up exclusively by an
  * explicitly consented reboot.
@@ -49,8 +49,12 @@ class ShellService : IShellService.Stub {
         exec("pidof ${shQuote(pattern)}").exitCode == 0
 
     @Keep
-    override fun ksuModuleListed(): Boolean =
-        exec("grep -q '^kernelsu ' /proc/modules").exitCode == 0
+    override fun ksuModuleListed(): Boolean {
+        // Keep AIDL transaction 4 compatible; it now handles hidden modules.
+        val result = exec("sh /data/local/tmp/ksu-status.sh")
+        check(result.exitCode in 0..1) { "KernelSU loaded-state check unavailable" }
+        return result.exitCode == 0
+    }
 
     @Keep
     override fun writeStream(pfd: ParcelFileDescriptor?, dir: String, name: String, mode: Int): Long {
