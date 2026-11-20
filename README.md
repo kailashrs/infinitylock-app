@@ -64,7 +64,18 @@ log, so quiet mode removes it while genuine alerts remain); the earlier
 checked-in carry patch is retired.
 `KSU_QUIET`, `KSU_HIDE_MODULE`, and `KSU_HIDE_SELINUX_ORACLE` are enabled.
 Each built APK contains `payload/provenance.json` with the source commits,
-patch digest, build options, and hashes of all staged payloads.
+build options, and hashes of all staged payloads.
+
+Since 1.1.0-rc.3 the module-image names are also rewritten at load time
+(`kernelsu`→`vfcs_sec`, `ksu_*`→`vvs_*` in the strtab/BTF string tables):
+the hide profile left the per-module BTF registered at load time
+(`/sys/kernel/btf/<name>` and its `ksu_*` names) readable, which the
+binder's rename pass now closes, with `SHN_UNDEF` import names preserved.
+17.2.13.3.W10.V000L1 firmware is accepted (kernel Image byte-identical to
+17.2.11.5/17.2.12.0), and the payload pins are corrected: runner
+`9e87c78f` (rename pass, `module_btf` probe channels, rename-aware binder
+test) and KernelSU `1fa5ff4a` (quiet `allow_shell` notice upstream; the
+carried patch is retired and the rebuilt module is byte-identical).
 
 Loaded-state checks accept a live module-list entry or a successful root-side
 `ksuquery`, under either the stock or the binder-renamed module identity. When Shizuku runs as UID 2000, the gated query is unavailable;
