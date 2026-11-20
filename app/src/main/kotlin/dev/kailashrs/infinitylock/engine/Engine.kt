@@ -187,7 +187,7 @@ class Engine(
                         )
                     }
                 }
-                exec("rm -f ${Target.REMOTE_DIR}/ksupatch_neuter ${Target.REMOTE_DIR}/ksupatch_skip")
+                exec("rm -f ${Target.REMOTE_DIR}/ksupatch_neuter ${Target.REMOTE_DIR}/ksupatch_skip ${Target.REMOTE_DIR}/hkd_base ${Target.REMOTE_DIR}/hkd_go ${Target.REMOTE_DIR}/hkd_open")
                 log("all payloads sha256-verified; ksupatch markers cleared")
 
                 // --- single detached launch, mirrors launch_attempt ---
@@ -238,6 +238,12 @@ class Engine(
                             }
 
                     else -> {
+                        // The hkd handshake files are (re)written during the
+                        // run, after run.sh's pre-launch cleanup; a stray
+                        // hkd_go survived a real success (seen 2026-11-20).
+                        // Clear them once the attempt reached a verdict and
+                        // the exploit process is gone; never while RUNNING.
+                        exec("rm -f ${Target.REMOTE_DIR}/hkd_base ${Target.REMOTE_DIR}/hkd_go ${Target.REMOTE_DIR}/hkd_open")
                         val success = outcome == Outcome.DONE || outcome == Outcome.MODULE_LOADED
                         finish(
                             outcome,
