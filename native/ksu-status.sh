@@ -4,11 +4,13 @@
 # ksu-live.stamp only after its gated ksuquery succeeds.
 set -u
 
-if grep -q '^kernelsu .* Live ' /proc/modules 2>/dev/null; then
+if grep -qE '^(kernelsu|vfcs_sec) .* Live ' /proc/modules 2>/dev/null; then
     exit 0
 fi
 # A visible module still initializing/going away is not an absent module.
-if grep -q '^kernelsu ' /proc/modules 2>/dev/null; then
+# vfcs_sec: the binder's rename pass rewrites the module image name, so an
+# unhided or hide-fallback build lists under the renamed identity.
+if grep -qE '^(kernelsu|vfcs_sec) ' /proc/modules 2>/dev/null; then
     exit 2
 fi
 

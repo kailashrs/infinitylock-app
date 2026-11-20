@@ -53,7 +53,9 @@ echo "#define UTS_RELEASE \"$TARGET\"" > "$KDIR/include/generated/utsrelease.h"
 make -C "$KDIR" M=/build/kernelsu/kernel ARCH=arm64 LLVM=1 CONFIG_KSU=m CONFIG_KSU_NO_TEXT_POKE=y CONFIG_KSU_SELF_RESOLVED_DATA=y CONFIG_KSU_QUIET=y CONFIG_KSU_HIDE_MODULE=y CONFIG_KSU_HIDE_SELINUX_ORACLE=y KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=2680 GIT=/bin/false KBUILD_MODPOST_WARN=1 KSU_NEW_DCACHE_FLUSH=1 -j2 modules
 llvm-strip --strip-debug /build/kernelsu/kernel/kernelsu.ko -o /build/payload/kernelsu.ko
 '
-python3 "$SCRIPT_DIR/tests/check_hardening_module.py" --nm "$TOOLCHAIN/llvm-nm" "$WORK/payload/kernelsu.ko"
+python3 "$SCRIPT_DIR/tests/check_hardening_module.py" --nm "$TOOLCHAIN/llvm-nm" \
+    --census "$SCRIPT_DIR/tests/device_modules.txt" \
+    --rename-header "$WORK/runner/src/ksrename.h" "$WORK/payload/kernelsu.ko"
 # Check that the freshly built module still satisfies the pinned binder's ELF,
 # ABI and symbol guards before generating an APK from it.
 clang -O1 -g -fsanitize=address,undefined -Wall -Wextra "$WORK/runner/src/ksupatch.c" -o "$WORK/ksupatch-host"

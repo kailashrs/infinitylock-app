@@ -67,7 +67,7 @@ Each built APK contains `payload/provenance.json` with the source commits,
 patch digest, build options, and hashes of all staged payloads.
 
 Loaded-state checks accept a live module-list entry or a successful root-side
-`ksuquery`. When Shizuku runs as UID 2000, the gated query is unavailable;
+`ksuquery`, under either the stock or the binder-renamed module identity. When Shizuku runs as UID 2000, the gated query is unavailable;
 the check instead accepts the current-boot `ksu-live.stamp` written by the
 runner after its root-side query succeeds. Stale stamps and modules still
 initializing are not accepted as successful loads. The same check runs in

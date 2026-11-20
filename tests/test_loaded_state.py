@@ -54,7 +54,11 @@ with tempfile.TemporaryDirectory(prefix="infinitylock-status-") as temp:
         print("PASS:", label)
 
     check("visible live module", "kernelsu 100 0 - Live 0\n", None, "2000", 0)
+    check("renamed live module (binder image rename)", "vfcs_sec 100 0 - Live 0\n", None, "2000", 0)
     check("initializing is inconclusive and blocks another load", "kernelsu 100 0 - Loading 0\n", None, "2000", 2)
+    check("renamed initializing blocks another load", "vfcs_sec 100 0 - Loading 0\n", None, "2000", 2)
+    check("renamed and stock modules coexist", "vfcs_sec 100 0 - Live 0\nkernelsu 1 0 - Loading 0\n", None, "2000", 0)
+    check("unrelated module names are ignored", "kernelsu_helper 1 0 - Live 0\nvfcs_sec_probe 2 0 - Live 0\n", None, "2000", 1)
     check("hidden current-boot module", "", BOOT, "2000", 0)
     check("stale stamp refused", "", "11234567-89ab-cdef-0123-456789abcdef", "2000", 1)
     check("missing stamp is not success", "", None, "2000", 1)
