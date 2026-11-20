@@ -64,7 +64,16 @@ log, so quiet mode removes it while genuine alerts remain); the earlier
 checked-in carry patch is retired.
 `KSU_QUIET`, `KSU_HIDE_MODULE`, and `KSU_HIDE_SELINUX_ORACLE` are enabled.
 Each built APK contains `payload/provenance.json` with the source commits,
-patch digest, build options, and hashes of all staged payloads.
+build options, and hashes of all staged payloads.
+
+Since 1.1.0-rc.4 the exploit stages and runs under the bland name
+`vvlogd` -- process tree, parked zombies, `/proc/<pid>/exe` and cmdline
+all read as an unremarkable vendor logger -- and the module-image names
+are rewritten at load time (`kernelsu`→`vfcs_sec`, `ksu_*`→`vvs_*` in
+the strtab/BTF string tables), closing the per-module BTF name exposure
+the hide profile left readable. Loaded-state checks accept both module
+identities, and a device module-name census guards every build against
+rename collisions.
 
 Loaded-state checks accept a live module-list entry or a successful root-side
 `ksuquery`, under either the stock or the binder-renamed module identity. When Shizuku runs as UID 2000, the gated query is unavailable;
