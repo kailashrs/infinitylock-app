@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-RUNNER_REF=9e87c78f2419494b7a5b0e21d5e9d67b5a902dd2
+RUNNER_REF=d37e31f43f176fe1adb53799a0ca75cedce106d4
 KERNELSU_REF=${KERNELSU_REF:-1fa5ff4ac280ea6008d6d57d123691a105322b41}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
@@ -81,7 +81,9 @@ elif text.count(with_hash) != 1:
     raise SystemExit('Unexpected Payload enum declaration')
 for name in names:
     digest=hashlib.sha256((built/name).read_bytes()).hexdigest()
-    pattern = r'("payload/' + re.escape(name) + r'",\s*"' + re.escape(name) + r'")(?:,\s*"[0-9a-f]{64}")?'
+    # match the entry by asset path; keep whatever remoteName it declares
+    # (the exploit stages under an alias, e.g. ic98260 -> vvlogd)
+    pattern = r'("payload/' + re.escape(name) + r'",\s*"[^"]*")(?:,\s*"[0-9a-f]{64}")?'
     text,count=re.subn(pattern,lambda match: match.group(1) + ', "' + digest + '"',text)
     if count != 1: raise SystemExit(f'Payload.kt entry missing or duplicated: {name}')
 manifest.write_text(text)

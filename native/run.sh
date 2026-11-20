@@ -38,13 +38,13 @@ case "$BOOT" in ????????-????-????-????-????????????) ;; *) echo 'REFUSED invali
 status=0
 sh /data/local/tmp/ksu-status.sh || status=$?
 [ "$status" -le 1 ] || { echo 'REFUSED loaded state unavailable'; exit 2; }
-if [ "$status" -eq 0 ] || pidof ic98260 >/dev/null 2>&1; then
+if [ "$status" -eq 0 ] || pidof vvlogd >/dev/null 2>&1; then
     echo 'REFUSED KernelSU or runner already present; clean boot required'
     exit 2
 fi
 # Engine atomically reserves this boot before invoking the app runner.
 [ -d "$WORK/attempt-$BOOT" ] || { echo 'REFUSED boot was not reserved by InfinityLock'; exit 2; }
-[ -x /data/local/tmp/ic98260 ] && [ -x /data/local/tmp/ksupatch ] &&
+[ -x /data/local/tmp/vvlogd ] && [ -x /data/local/tmp/ksupatch ] &&
 [ -x /data/local/tmp/insmodf ] && [ -s /data/local/tmp/kernelsu.ko ] || {
     echo 'REFUSED staged payload missing'
     exit 2
@@ -52,6 +52,6 @@ fi
 mkdir -p /sdcard/InfinityLock || { echo 'REFUSED cannot create log folder'; exit 2; }
 touch "$LOG_PATH" || { echo 'REFUSED cannot open runner log'; exit 2; }
 rm -f /data/local/tmp/hkd_base /data/local/tmp/hkd_go /data/local/tmp/hkd_open
-KSU_RUNNER_DEBUG=$DEBUG setsid /data/local/tmp/ic98260 fake >>"$LOG_PATH" 2>&1 </dev/null &
+KSU_RUNNER_DEBUG=$DEBUG setsid /data/local/tmp/vvlogd fake >>"$LOG_PATH" 2>&1 </dev/null &
 PID=$!
 echo "RUNNER_STARTED pid=$PID boot=$BOOT log=$LOG_PATH"

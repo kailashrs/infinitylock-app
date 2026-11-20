@@ -122,7 +122,7 @@ class Engine(
             kernel = kernel,
             productVersion = productVersion,
             ksuLoaded = supported && ksuLoaded(),
-            parkedProcess = shell.processAlive("ic98260"),
+            parkedProcess = shell.processAlive("vvlogd"),
             attemptedThisBoot = bootId.isNotBlank() &&
                 (preferences.getString("attempt_boot", "") == bootId || shell.pathExists(bootMarkerPath(bootId))),
             bootId = bootId,
@@ -302,7 +302,7 @@ class Engine(
         if (!shell.asBinder().isBinderAlive) return Outcome.CRASH_INCOMPLETE
         if (ksuLoaded()) return Outcome.MODULE_LOADED
         val text = activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty().replace("\r", "")
-        return classifyLog(text) { shell.processAlive("ic98260") }
+        return classifyLog(text) { shell.processAlive("vvlogd") }
     }
 
     /**

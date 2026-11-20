@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix="infinitylock-status-") as temp:
     executable(mocks / "getprop", 'echo PD2454_A_17.2.11.5.W10\n')
     executable(mocks / "pidof", 'exit 1\n')
     executable(mocks / "setsid", 'touch "$TEST_LAUNCH"\n')
-    for name in ("ic98260", "ksupatch", "insmodf", "kernelsu.ko"):
+    for name in ("vvlogd", "ksupatch", "insmodf", "kernelsu.ko"):
         executable(remote / name, "exit 99\n")
     (remote / ".infinitylock" / ("attempt-" + BOOT)).mkdir(parents=True)
     slide = remote / "ksu_slide"
