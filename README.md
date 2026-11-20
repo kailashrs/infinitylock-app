@@ -58,10 +58,10 @@ Actions. The app does not store those generated binaries in the repository.
 Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner)
 and [the hardening branch of your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-hardening).
 
-The KernelSU source pin is `91b4edce51466818541060758a573378b9e260b9`,
-with the checked-in `native/patches/quiet-shell-init.patch` applied before
-compilation. This patch makes the routine `allow_shell` initialization message
-an informational log, so quiet mode removes it while genuine alerts remain.
+The KernelSU source pin is `1fa5ff4ac280ea6008d6d57d123691a105322b41`,
+which carries the quiet `allow_shell` notice upstream (an informational
+log, so quiet mode removes it while genuine alerts remain); the earlier
+checked-in carry patch is retired.
 `KSU_QUIET`, `KSU_HIDE_MODULE`, and `KSU_HIDE_SELINUX_ORACLE` are enabled.
 Each built APK contains `payload/provenance.json` with the source commits,
 patch digest, build options, and hashes of all staged payloads.
