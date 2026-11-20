@@ -22,6 +22,7 @@ object Target {
      * firmware or vice versa) is not supported.
      */
     val SUPPORTED_FIRMWARE: List<Firmware> = listOf(
+        Firmware("6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k", "PD2454_A_17.2.13.3.W10"),
         Firmware("6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k", "PD2454_A_17.2.12.0.W10"),
         Firmware("6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k", "PD2454_A_17.2.11.5.W10"),
         Firmware("6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k", "PD2454_A_17.2.10.6.W10"),

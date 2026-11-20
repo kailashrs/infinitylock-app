@@ -20,10 +20,30 @@ reap them. Reboot to recover. The attempt can also crash or restart the phone.
 Auto-root is optional. When enabled, InfinityLock starts at boot, waits for
 Shizuku, then makes one checked attempt. It does not retry or reboot the phone.
 
+## Never write to protected partitions
+
+A temporary root shell is not permission to modify the system. On this device
+the system partitions (`system`, `system_ext`, `vendor`, `product`, `odm`) and
+the boot chain (`boot`, `init_boot`, `vbmeta`, `vbmeta_system`) are
+write-protected and verified. Do not:
+
+- remount any of them read-write, including `adb remount` or
+  `mount -o rw,remount /` — a successful remount can allow subsequent
+  commands to modify them;
+- `dd`, `cp`, or flash an image into them, or patch files inside them
+  (`build.prop`, init scripts, framework jars, APKs on `/system`);
+- disable dm-verity, vbmeta verification, or verified boot to make a write stick.
+
+Modifying a verified partition can cause AVB or dm-verity checks to fail and
+prevent the device from booting. Use the root shell to run tools and inspect
+the system, not to edit partitions. If any guide tells you to rw-remount a
+partition on this phone, ignore it.
+
 ## Supported device and software
 
 - Device: Vivo X200 Ultra, model V2454A, product PD2454.
 - OS: OriginOS 7 / Android 17. Accepted exact product-version/kernel pairs:
+  - `PD2454_A_17.2.13.3.W10` with `6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k`.
   - `PD2454_A_17.2.12.0.W10` with `6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k`.
   - `PD2454_A_17.2.11.5.W10` with `6.6.127-android15-8-gd489d4ad2a70-abogki567717946-4k`.
   - `PD2454_A_17.2.10.6.W10` with `6.6.127-android15-8-g3b723d0e8507-abogki558056638-4k`.
