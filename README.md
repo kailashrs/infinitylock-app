@@ -58,10 +58,12 @@ Actions. The app does not store those generated binaries in the repository.
 Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner)
 and [the hardening branch of your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-hardening).
 
-The KernelSU source pin is `1fa5ff4ac280ea6008d6d57d123691a105322b41`,
-which carries the quiet `allow_shell` notice upstream (an informational
-log, so quiet mode removes it while genuine alerts remain); the earlier
-checked-in carry patch is retired.
+The KernelSU source pin is `8b6585c8ee22704dc9a6e2d388e4cdb1ac24d473`,
+which keeps the quiet `allow_shell` notice and removes the routine printk
+calls on the syscall-hook hot paths; the earlier checked-in carry patch is
+retired. The same commit records why a syscall-hook timing side channel was
+measured but is not the trigger that super.money reacts to
+(`docs/plans/anti-timing-side-channel.md` in the fork).
 `KSU_QUIET`, `KSU_HIDE_MODULE`, and `KSU_HIDE_SELINUX_ORACLE` are enabled.
 Each built APK contains `payload/provenance.json` with the source commits,
 patch digest, build options, and hashes of all staged payloads.

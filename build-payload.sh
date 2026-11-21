@@ -2,7 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 RUNNER_REF=d37e31f43f176fe1adb53799a0ca75cedce106d4
-KERNELSU_REF=${KERNELSU_REF:-1fa5ff4ac280ea6008d6d57d123691a105322b41}
+KERNELSU_REF=${KERNELSU_REF:-8b6585c8ee22704dc9a6e2d388e4cdb1ac24d473}
 DDK_IMAGE=${DDK_IMAGE:-ghcr.io/ylarod/ddk-min@sha256:51159bc935c75a282fc65bc87e02f16bd098d1cdf55dc558c4fdd0fcf7a132e2}
 MANAGER_URL=https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk
 MANAGER_SHA256=b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450
@@ -25,8 +25,10 @@ RUNNER_COMMIT=$(git -C "$WORK/runner" rev-parse HEAD)
 git clone --quiet https://github.com/kailashrs/KernelSU.git "$WORK/kernelsu"
 git -C "$WORK/kernelsu" checkout --quiet "$KERNELSU_REF"
 KERNELSU_COMMIT=$(git -C "$WORK/kernelsu" rev-parse HEAD)
-# 1fa5ff4 carries the quiet allow_shell notice upstream, so the former
-# quiet-shell-init.patch carry is no longer applied; test_quiet_init.py
+# 8b6585c builds on the quiet allow_shell notice and also removes the routine
+# printk calls on the hook hot paths (setresuid on every fork, execve markers);
+# quiet mode already dropped them, this removes the residual format strings.
+# The former quiet-shell-init.patch carry stays retired; test_quiet_init.py
 # still compiles the real call site to prove quiet mode drops it.
 python3 "$SCRIPT_DIR/tests/test_quiet_init.py" "$WORK/kernelsu"
 python3 "$WORK/runner/tests/test_child_logging.py"

@@ -8,7 +8,7 @@ enum class Payload(val asset: String, val remoteName: String, val sha256: String
     KSUQUERY("payload/ksuquery", "ksuquery", "2cf12b82144d7c43d0c2c56d62054392810533f503d39ebc3338ab804b054271"),
     KSU_EXPOSURE_PROBE("payload/ksu_exposure_probe", "ksu_exposure_probe", "10cef5c4933e21dbfb9f1f3251213079fb93e535ddacca302c6ab221ec78612e"),
     KSU_STATUS("payload/ksu-status.sh", "ksu-status.sh", "34b984b03ab1322cdaa539bc6f706773d5dd6bdee528e9ccd254520056cc9497"),
-    KERNELSU_KO("payload/kernelsu.ko", "kernelsu.ko", "687fefd7cae3c94f2342816633f8553379dee3f65eb33d08e73d8ba8487d7d55"),
+    KERNELSU_KO("payload/kernelsu.ko", "kernelsu.ko", "b01397e142edcd656c0dfcd3b194a3747182123617cee5dd7637c0321af00f7e"),
     KSUD("payload/ksud", "ksud", "4f7d5fd65631915ea579ff406bd9cbe58217f2c91dac6527f5b2f28ad4508171"),
     RUNNER("payload/run.sh", "run.sh", "67de5e85179f757dfa7e81f486e0bda0bc5d85133fb86a257f051a9f3a6996d8"),
 }
