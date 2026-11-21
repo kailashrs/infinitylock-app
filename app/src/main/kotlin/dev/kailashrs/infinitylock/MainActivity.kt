@@ -137,6 +137,8 @@ class MainActivity : ComponentActivity() {
             topBar = {
                 TopAppBar(
                     title = "InfinityLock",
+                    largeTitle = "InfinityLock",
+                    color = MiuixTheme.colorScheme.surface,
                     actions = {
                         OverlayIconDropdownMenu(entry = DropdownEntry(items = listOf(
                             DropdownItem(text = "Auto-root", selected = autoRoot,
@@ -164,9 +166,9 @@ class MainActivity : ComponentActivity() {
         ) { padding ->
             Column(
                 Modifier.fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .verticalScroll(rememberScrollState())
+                    .padding(padding)
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
