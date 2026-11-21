@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import dev.kailashrs.infinitylock.shell.IShellService
+import java.io.File
 import kotlin.concurrent.thread
 
 /** Result classifier outputs — same set as the runner's classify(). */
@@ -61,8 +62,8 @@ data class Attempt(
  *  - staged files under /data/local/tmp are removed after a terminal verdict
  *    once no bootstrap is alive, and again on the next app start, so a
  *    completed or refused attempt does not leave identifiable payload names.
- *    The boot-scoped ksu-live.stamp is the one exception: the fresh-boot gate
- *    needs it to keep a hidden, already-loaded module visible after cleanup.
+ *    The hidden-module loaded state is kept in private preferences instead of
+ *    the public ksu-live.stamp, so the stamp is removed too.
  *  - never reboots without consent; classify mirrors the runner's markers
  */
 class Engine(
@@ -79,20 +80,25 @@ class Engine(
     private val preferences = context.getSharedPreferences("runner", Context.MODE_PRIVATE)
     private var activeLog: String
         get() = preferences.getString("log", "")?.takeIf {
-            it.matches(Regex("/sdcard/InfinityLock/infinitylock-run-[0-9-]+\\.log"))
+            it.matches(Regex("/sdcard/InfinityLock/infinitylock-run-[0-9-]+\\.log")) ||
+                (it.startsWith(context.filesDir.absolutePath + "/logs/") && it.endsWith(".log"))
         }.orEmpty()
         set(value) { preferences.edit().putString("log", value).commit() }
     @Volatile private var state = Attempt()
+    @Volatile private var attemptBoot = ""
 
     // ------------------------------------------------------------------ api
 
     /** Snapshot gates so the UI can show them before anything runs. */
     fun refreshGates(onDone: (Gates) -> Unit) {
         thread(isDaemon = true) {
-            cleanupStaleArtifacts()
+            // Read the public stamp before cleanup: it is the only loaded-state
+            // witness if the private preference was not written yet.
             val g = runCatching { readGates() }.getOrElse {
                 Gates()
             }
+            cleanupStaleArtifacts()
+            cleanupIdleHelpers()
             main.post { onDone(g) }
         }
     }
@@ -124,10 +130,16 @@ class Engine(
         val supported = Target.SUPPORTED_FIRMWARE.any {
             it.kernel == kernel && it.productVersion == productVersion
         }
+        val loaded = supported && (loadedForBoot(bootId) || ksuLoaded())
+        if (loaded && bootId.isNotBlank()) {
+            // Keep the hidden-module state in private storage so the public
+            // ksu-live.stamp does not have to be retained after cleanup.
+            preferences.edit().putString("loaded_boot", bootId).commit()
+        }
         return Gates(
             kernel = kernel,
             productVersion = productVersion,
-            ksuLoaded = supported && ksuLoaded(),
+            ksuLoaded = loaded,
             parkedProcess = shell.processAlive("vvlogd"),
             attemptedThisBoot = bootId.isNotBlank() &&
                 (preferences.getString("attempt_boot", "") == bootId || shell.pathExists(bootMarkerPath(bootId))),
@@ -136,6 +148,9 @@ class Engine(
     }
 
     private fun bootMarkerPath(bootId: String): String = "${Target.WORK_DIR}/attempt-$bootId"
+
+    private fun loadedForBoot(bootId: String): Boolean =
+        bootId.isNotBlank() && preferences.getString("loaded_boot", "") == bootId
 
     private fun ksuLoaded(): Boolean = synchronized(statusLock) {
         // Stage only read-only status helpers before gates. Neither the
@@ -157,14 +172,12 @@ class Engine(
             state = state.copy(busy = true)
         }
         thread(isDaemon = true) {
-            // A previous attempt may have left staged names behind even
-            // though its bootstrap is gone. Clear them before re-staging.
-            cleanupRemoteArtifacts()
             reset()
             try {
                 // --- gates (mirror runner REFUSED paths) ---
                 running { copy(phase = Phase.GATES, busy = true) }
                 val gates = readGates()
+                attemptBoot = gates.bootId
                 when {
                     !gates.bootId.matches(Regex("[0-9a-fA-F-]{36}")) || gates.kernel.isEmpty() || !gates.firmwareMatch ->
                         return@thread finish(Outcome.REFUSED, "REFUSED: exact kernel or firmware mismatch")
@@ -183,6 +196,11 @@ class Engine(
 
                     else -> log("gates ok; kernel=${gates.kernel}")
                 }
+
+                // Gates have read any public loaded-state stamp. A previous
+                // attempt may have left staged names behind even though its
+                // bootstrap is gone; clear them before re-staging.
+                cleanupRemoteArtifacts()
 
                 // --- staging: sha256-verified, mirrors ensure_binary ---
                 running { copy(phase = Phase.STAGING) }
@@ -306,7 +324,7 @@ class Engine(
             "hkd_base", "hkd_go", "hkd_open", "hkd_extras",
             "ksu_slide", "ksu-exposure-root.txt", "kernelsu-p.ko",
             "ksu-trace.log", "ksu_stage.sh", "kmsg-this-boot.txt",
-            "ksupatch_neuter", "ksupatch_skip", "tsud",
+            "ksu-live.stamp", "ksupatch_neuter", "ksupatch_skip", "tsud",
         )
 
     @Volatile private var staleCleanupDone = false
@@ -315,25 +333,17 @@ class Engine(
      * Remove staged payloads and runtime artifacts from /data/local/tmp.
      *
      * A parked vvlogd owns its inputs until the user-consented reboot, so
-     * nothing is deleted while it is alive. ksu-live.stamp is kept only while
-     * it matches the current boot: it is the loaded-state marker the
-     * fresh-boot gate uses when the module is hidden, and a stamp from an
-     * earlier boot is stale residue.
+     * nothing is deleted while it is alive. The loaded-state marker is the
+     * private loaded_boot preference, so the public ksu-live.stamp is removed
+     * with the rest of the temporary surface.
      */
     private fun cleanupRemoteArtifacts(): Boolean = runCatching {
         synchronized(statusLock) {
             if (shell.processAlive("vvlogd")) {
                 false
             } else {
-                val boot = exec("cat /proc/sys/kernel/random/boot_id").second.trim()
-                val stamp = exec("cat ${Target.REMOTE_DIR}/ksu-live.stamp").second.trim()
-                val staleStamp = if (boot.isNotBlank() && stamp != boot) {
-                    " ${Target.REMOTE_DIR}/ksu-live.stamp"
-                } else {
-                    ""
-                }
                 val files = cleanupNames.joinToString(" ") { "${Target.REMOTE_DIR}/$it" } +
-                    " ${Target.REMOTE_DIR}/pstore*.bin$staleStamp"
+                    " ${Target.REMOTE_DIR}/pstore*.bin"
                 val filesCleared = exec("rm -f $files").first == 0
                 val dirsCleared = exec(
                     "rm -rf ${Target.WORK_DIR} ${Target.REMOTE_DIR}/tempshell",
@@ -345,7 +355,67 @@ class Engine(
 
     private fun cleanupStaleArtifacts() {
         if (staleCleanupDone || state.busy) return
+        archiveStaleLogs()
         if (cleanupRemoteArtifacts()) staleCleanupDone = true
+    }
+
+    /** Status helpers are only needed around a gate check, not while idle. */
+    private fun cleanupIdleHelpers() {
+        if (state.busy) return
+        if (runCatching { shell.processAlive("vvlogd") }.getOrDefault(true)) return
+        runCatching {
+            exec("rm -f ${Target.REMOTE_DIR}/ksuquery ${Target.REMOTE_DIR}/ksu-status.sh")
+        }
+    }
+
+    private fun readLogText(path: String): String {
+        if (path.isBlank()) return ""
+        return if (path.startsWith(context.filesDir.absolutePath)) {
+            runCatching { File(path).takeIf { it.isFile }?.readText().orEmpty() }
+                .getOrDefault("")
+                .takeLast(LOG_CAP)
+        } else {
+            runCatching { shell.readFile(path, LOG_CAP) }.getOrDefault("")
+        }
+    }
+
+    /**
+     * Move a public runner log into app-private storage and delete the public
+     * copy. Public logs contain bootstrap and KernelSU markers, so they must
+     * not remain on shared storage after the attempt is over.
+     */
+    private fun archiveRunnerLog(path: String): String? {
+        if (path.isBlank() || path.startsWith(context.filesDir.absolutePath)) return null
+        if (runCatching { shell.processAlive("vvlogd") }.getOrDefault(true)) return null
+        val text = runCatching { shell.readFile(path, LOG_CAP) }.getOrDefault("")
+        if (text.isEmpty()) return null
+        val dir = File(context.filesDir, "logs")
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        val dest = File(dir, File(path).name)
+        if (runCatching { dest.writeText(text) }.isFailure) return null
+        val removed = runCatching { exec("rm -f ${shellQuote(path)}").first == 0 }
+            .getOrDefault(false)
+        return if (removed) dest.absolutePath else null
+    }
+
+    private fun archiveStaleLogs() {
+        if (state.busy) return
+        if (runCatching { shell.processAlive("vvlogd") }.getOrDefault(true)) return
+        val listing = runCatching {
+            exec("ls -1 /sdcard/InfinityLock/infinitylock-* 2>/dev/null").second
+        }.getOrDefault("")
+        for (path in listing.lineSequence().map { it.trim() }.filter {
+            it.matches(
+                Regex("/sdcard/InfinityLock/infinitylock-(run-[0-9-]+\\.log|exposure-[A-Za-z0-9._-]+\\.txt)"),
+            )
+        }) {
+            val archived = archiveRunnerLog(path)
+            if (archived != null) {
+                if (activeLog == path) activeLog = archived
+                log("runner log archived to app-private storage")
+            }
+        }
+        runCatching { exec("rmdir /sdcard/InfinityLock 2>/dev/null || true") }
     }
 
     // ------------------------------------------------------------ classify
@@ -361,13 +431,13 @@ class Engine(
 
     /** Called on a background dispatcher; bounded tail of the actual runner output. */
     fun deviceLogSnapshot(): String = runCatching {
-        activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty()
+        readLogText(activeLog)
     }.getOrDefault("Runner log unavailable: shell disconnected")
 
     private fun classify(): Outcome {
         if (!shell.asBinder().isBinderAlive) return Outcome.CRASH_INCOMPLETE
         if (ksuLoaded()) return Outcome.MODULE_LOADED
-        val text = activeLog.takeIf { it.isNotEmpty() }?.let { shell.readFile(it, LOG_CAP) }.orEmpty().replace("\r", "")
+        val text = readLogText(activeLog).replace("\r", "")
         return classifyLog(text) { shell.processAlive("vvlogd") }
     }
 
@@ -455,6 +525,9 @@ class Engine(
         if (fatal != null) log("fatal: $fatal")
         state = state.copy(outcome = outcome, detail = detail, phase = Phase.FINISHED, busy = false)
         log(detail)
+        if ((outcome == Outcome.DONE || outcome == Outcome.MODULE_LOADED) && attemptBoot.isNotBlank()) {
+            preferences.edit().putString("loaded_boot", attemptBoot).commit()
+        }
         if (outcome != Outcome.NONE &&
             outcome != Outcome.WINDOW_ELAPSED &&
             outcome != Outcome.PARK_BURST &&
@@ -464,6 +537,11 @@ class Engine(
                 log("cleaned staged artifacts from ${Target.REMOTE_DIR}")
             } else if (runCatching { shell.processAlive("vvlogd") }.getOrDefault(false)) {
                 log("cleanup deferred: parked bootstrap still owns its files")
+            }
+            val archived = archiveRunnerLog(activeLog)
+            if (archived != null) {
+                activeLog = archived
+                log("runner log archived to app-private storage")
             }
         }
         postState()

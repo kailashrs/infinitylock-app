@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -131,31 +132,45 @@ class MainActivity : ComponentActivity() {
         val g = gates
         val secondary = MiuixTheme.colorScheme.onSurfaceVariantSummary
         val dark = isSystemInDarkTheme()
-        Scaffold(topBar = {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("InfinityLock", fontSize = 34.sp)
-            OverlayIconDropdownMenu(entry = DropdownEntry(items = listOf(
-                DropdownItem(text = "Auto-root", selected = autoRoot,
-                    summary = if (autoRoot) "On" else "Off", onClick = {
-                        if (autoRoot) updateAutoRootPreference(false) else confirmAutoRoot = true
-                    }),
-                DropdownItem(text = "Debug logging", selected = debugLogging,
-                    summary = if (debugLogging) "On" else "Off", enabled = !attempt.busy, onClick = {
-                        debugLogging = !debugLogging
-                        preferences.edit().putBoolean("debug_logging", debugLogging).apply()
-                    }),
-                DropdownItem(text = "Reboot", enabled = engine != null && !attempt.busy,
-                    onClick = { confirmReboot = true })
-            ))) {
-                Icon(imageVector = MiuixIcons.More, contentDescription = "More options")
-            }
-            }
-        }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        val scrollBehavior = MiuixScrollBehavior()
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = "InfinityLock",
+                    actions = {
+                        OverlayIconDropdownMenu(entry = DropdownEntry(items = listOf(
+                            DropdownItem(text = "Auto-root", selected = autoRoot,
+                                summary = if (autoRoot) "On" else "Off", onClick = {
+                                    if (autoRoot) updateAutoRootPreference(false) else confirmAutoRoot = true
+                                }),
+                            DropdownItem(text = "Debug logging", selected = debugLogging,
+                                summary = if (debugLogging) "On" else "Off", enabled = !attempt.busy, onClick = {
+                                    debugLogging = !debugLogging
+                                    preferences.edit().putBoolean("debug_logging", debugLogging).apply()
+                                }),
+                            DropdownItem(text = "Reboot", enabled = engine != null && !attempt.busy,
+                                onClick = { confirmReboot = true })
+                        ))) {
+                            Icon(imageVector = MiuixIcons.More, contentDescription = "More options")
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                )
+            },
+            popupHost = { },
+            contentWindowInsets = WindowInsets.systemBars
+                .add(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Horizontal),
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 Text("Temporary root for Vivo X200 Ultra · Based on CVE-2026-98260", fontSize = 16.sp, color = secondary)
                 Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(20.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

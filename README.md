@@ -11,7 +11,7 @@ installed for KernelSU's manager and `ksud` integration.
 2. Runs the POSIX CPU timer race to obtain a privileged shell for this boot.
 3. Uses the shell to discover the current boot's kernel slide, bind the matched
    KernelSU module's private function imports, and insert it with flags zero.
-4. Shows the runner's live `iq.log` in Diagnostics.
+4. Shows the attempt's runner log in Diagnostics.
 
 Root is temporary and the module stays pinned until reboot. Each boot permits
 one attempt. A failed attempt can leave parked exploit processes; do not kill or
@@ -21,12 +21,20 @@ A completed or refused attempt does not leave the staged payload names behind:
 InfinityLock deletes the verified payloads, `ksu_stage.sh`, `ksu_slide`,
 `kernelsu-p.ko`, trace/crash files, the `hkd_*` handshake files, `tempshell/`,
 and the `.infinitylock` reservation once no `vvlogd` bootstrap is alive, and
-again on every app start. A parked attempt keeps its files until the
-user-consented reboot; the next app start after that removes the leftovers.
-The boot-scoped `ksu-live.stamp` is kept only while it matches the current
-boot, because the hidden-module gate needs it; a stamp from an earlier boot is
-removed. The app's private `attempt_boot` preference keeps the one-attempt
+again on every app start. The `ksuquery`/`ksu-status.sh` helpers are staged
+only around a gate check and removed when the app is idle. The hidden-module
+loaded state is kept in the private `loaded_boot` preference, so
+`ksu-live.stamp` is deleted with the rest. A parked attempt keeps its files
+until the user-consented reboot; the next app start after that removes the
+leftovers. The app's private `attempt_boot` preference keeps the one-attempt
 rule even when temporary markers are gone.
+
+Runner logs are moved to app-private storage and the public
+`/sdcard/InfinityLock/infinitylock-run-*.log` copy is deleted after a terminal
+verdict or on the next start. While an attempt is parked, its log stays public
+because the bootstrap is still writing it; reboot and reopen the app to archive
+it. The remaining `/data/local/tmp` exposure and the tmpfs/memfd options are
+documented in `docs/plans/tmp-artifact-lifecycle.md`.
 
 Auto-root is optional. When enabled, InfinityLock starts at boot, waits for
 Shizuku, then makes one checked attempt. It does not retry or reboot the phone.
@@ -104,4 +112,4 @@ slide still belongs to one boot and one kernel. Awgpatch needs no
 hardening-specific change; its separate slide record must still match the
 running boot and kernel before loading the VPN module.
 
-Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is always retained.
+Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is retained in app-private storage; its public copy is removed after the attempt.
