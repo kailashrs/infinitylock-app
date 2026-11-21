@@ -13,7 +13,8 @@ import java.io.File
  * IMPORTANT: this process must never kill/reap a bootstrap or reboot. It only
  * stages, launches with setsid (detached, survives app death), observes, and
  * classifies. Parked exploitation processes are cleaned up exclusively by an
- * explicitly consented reboot.
+ * explicitly consented reboot; the Engine removes staged files once no
+ * bootstrap is alive.
  */
 @Keep
 class ShellService : IShellService.Stub {

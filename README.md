@@ -17,6 +17,17 @@ Root is temporary and the module stays pinned until reboot. Each boot permits
 one attempt. A failed attempt can leave parked exploit processes; do not kill or
 reap them. Reboot to recover. The attempt can also crash or restart the phone.
 
+A completed or refused attempt does not leave the staged payload names behind:
+InfinityLock deletes the verified payloads, `ksu_stage.sh`, `ksu_slide`,
+`kernelsu-p.ko`, trace/crash files, the `hkd_*` handshake files, `tempshell/`,
+and the `.infinitylock` reservation once no `vvlogd` bootstrap is alive, and
+again on every app start. A parked attempt keeps its files until the
+user-consented reboot; the next app start after that removes the leftovers.
+The boot-scoped `ksu-live.stamp` is kept only while it matches the current
+boot, because the hidden-module gate needs it; a stamp from an earlier boot is
+removed. The app's private `attempt_boot` preference keeps the one-attempt
+rule even when temporary markers are gone.
+
 Auto-root is optional. When enabled, InfinityLock starts at boot, waits for
 Shizuku, then makes one checked attempt. It does not retry or reboot the phone.
 
@@ -86,10 +97,11 @@ count as successful detection. The app also saves its attempt's boot UUID in
 private preferences, so deleting temporary markers does not enable a second
 attempt from the same app installation in that boot.
 
-The raw slide remains at `/data/local/tmp/ksu_slide`. Neither staging nor status
-checks delete or rewrite it, and its presence never counts as loaded-state
-evidence. The slide still belongs to one boot and one kernel. Awgpatch needs
-no hardening-specific change; its separate slide record must still match the
+The raw slide is written to `/data/local/tmp/ksu_slide` during an attempt and
+removed by the post-verdict/next-start cleanup. It is never rewritten by staging
+or status checks, and its presence never counts as loaded-state evidence. The
+slide still belongs to one boot and one kernel. Awgpatch needs no
+hardening-specific change; its separate slide record must still match the
 running boot and kernel before loading the VPN module.
 
 Debug logging is off by default. Enable it from the menu to add separate kernel/crash snapshots and trace files on the next attempt. The runner log is always retained.

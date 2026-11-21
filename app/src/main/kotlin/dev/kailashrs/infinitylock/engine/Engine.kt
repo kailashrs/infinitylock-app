@@ -58,6 +58,11 @@ data class Attempt(
  *    app being killed
  *  - park-don't-kill: this code never kills or reaps anything; a parked
  *    process is cleaned up only by a user-consented reboot
+ *  - staged files under /data/local/tmp are removed after a terminal verdict
+ *    once no bootstrap is alive, and again on the next app start, so a
+ *    completed or refused attempt does not leave identifiable payload names.
+ *    The boot-scoped ksu-live.stamp is the one exception: the fresh-boot gate
+ *    needs it to keep a hidden, already-loaded module visible after cleanup.
  *  - never reboots without consent; classify mirrors the runner's markers
  */
 class Engine(
@@ -84,6 +89,7 @@ class Engine(
     /** Snapshot gates so the UI can show them before anything runs. */
     fun refreshGates(onDone: (Gates) -> Unit) {
         thread(isDaemon = true) {
+            cleanupStaleArtifacts()
             val g = runCatching { readGates() }.getOrElse {
                 Gates()
             }
@@ -99,7 +105,7 @@ class Engine(
 
     fun stopObserving() { update = null }
 
-    /** Consent-gated reboot: the ONLY cleanup this app ever performs. */
+    /** Consent-gated reboot; never automatic. */
     fun reboot(onDone: (Boolean, String) -> Unit) {
         thread(isDaemon = true) {
             val r = runCatching { exec("reboot") }
@@ -151,6 +157,9 @@ class Engine(
             state = state.copy(busy = true)
         }
         thread(isDaemon = true) {
+            // A previous attempt may have left staged names behind even
+            // though its bootstrap is gone. Clear them before re-staging.
+            cleanupRemoteArtifacts()
             reset()
             try {
                 // --- gates (mirror runner REFUSED paths) ---
@@ -288,6 +297,57 @@ class Engine(
         return written
     }
 
+    // ------------------------------------------------------------- cleanup
+
+    /** Payload and runtime files that must not outlive a finished attempt. */
+    private val cleanupNames: List<String> =
+        Payload.entries.map { it.remoteName } + listOf(
+            "iq.log",
+            "hkd_base", "hkd_go", "hkd_open", "hkd_extras",
+            "ksu_slide", "ksu-exposure-root.txt", "kernelsu-p.ko",
+            "ksu-trace.log", "ksu_stage.sh", "kmsg-this-boot.txt",
+            "ksupatch_neuter", "ksupatch_skip", "tsud",
+        )
+
+    @Volatile private var staleCleanupDone = false
+
+    /**
+     * Remove staged payloads and runtime artifacts from /data/local/tmp.
+     *
+     * A parked vvlogd owns its inputs until the user-consented reboot, so
+     * nothing is deleted while it is alive. ksu-live.stamp is kept only while
+     * it matches the current boot: it is the loaded-state marker the
+     * fresh-boot gate uses when the module is hidden, and a stamp from an
+     * earlier boot is stale residue.
+     */
+    private fun cleanupRemoteArtifacts(): Boolean = runCatching {
+        synchronized(statusLock) {
+            if (shell.processAlive("vvlogd")) {
+                false
+            } else {
+                val boot = exec("cat /proc/sys/kernel/random/boot_id").second.trim()
+                val stamp = exec("cat ${Target.REMOTE_DIR}/ksu-live.stamp").second.trim()
+                val staleStamp = if (boot.isNotBlank() && stamp != boot) {
+                    " ${Target.REMOTE_DIR}/ksu-live.stamp"
+                } else {
+                    ""
+                }
+                val files = cleanupNames.joinToString(" ") { "${Target.REMOTE_DIR}/$it" } +
+                    " ${Target.REMOTE_DIR}/pstore*.bin$staleStamp"
+                val filesCleared = exec("rm -f $files").first == 0
+                val dirsCleared = exec(
+                    "rm -rf ${Target.WORK_DIR} ${Target.REMOTE_DIR}/tempshell",
+                ).first == 0
+                filesCleared && dirsCleared
+            }
+        }
+    }.getOrDefault(false)
+
+    private fun cleanupStaleArtifacts() {
+        if (staleCleanupDone || state.busy) return
+        if (cleanupRemoteArtifacts()) staleCleanupDone = true
+    }
+
     // ------------------------------------------------------------ classify
 
     /** Non-blocking status probe; emits the classifier result to the UI. */
@@ -395,6 +455,17 @@ class Engine(
         if (fatal != null) log("fatal: $fatal")
         state = state.copy(outcome = outcome, detail = detail, phase = Phase.FINISHED, busy = false)
         log(detail)
+        if (outcome != Outcome.NONE &&
+            outcome != Outcome.WINDOW_ELAPSED &&
+            outcome != Outcome.PARK_BURST &&
+            outcome != Outcome.PARK_OTHER
+        ) {
+            if (cleanupRemoteArtifacts()) {
+                log("cleaned staged artifacts from ${Target.REMOTE_DIR}")
+            } else if (runCatching { shell.processAlive("vvlogd") }.getOrDefault(false)) {
+                log("cleanup deferred: parked bootstrap still owns its files")
+            }
+        }
         postState()
     }
 
