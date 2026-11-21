@@ -58,12 +58,16 @@ Actions. The app does not store those generated binaries in the repository.
 Payload sources: [PD2454 KernelSU runner](https://github.com/kailashrs/pd2454-kernelsu-runner)
 and [the hardening branch of your KernelSU fork](https://github.com/kailashrs/KernelSU/tree/codex/pd2454-hardening).
 
-The KernelSU source pin is `8b6585c8ee22704dc9a6e2d388e4cdb1ac24d473`,
-which keeps the quiet `allow_shell` notice and removes the routine printk
-calls on the syscall-hook hot paths; the earlier checked-in carry patch is
-retired. The same commit records why a syscall-hook timing side channel was
-measured but is not the trigger that super.money reacts to
-(`docs/plans/anti-timing-side-channel.md` in the fork).
+The KernelSU source pin is `2dcd43b767ecfdc4dd082a57847f9fa82750d3cb`,
+which keeps the quiet `allow_shell` notice and the removed hot-path printk
+calls from `8b6585c`, and adds the `/proc/<pid>/attr/current` half of the
+SELinux context oracle filter. ThreatCast's `app_zygote` preload asks the
+kernel whether KernelSU's SELinux types exist by writing candidate contexts
+and distinguishing `EINVAL` (type absent) from `EPERM` (type present); the
+new filter collapses the KernelSU cases to `EINVAL`
+(`docs/plans/selinux-context-oracle.md` in the fork). The earlier
+checked-in carry patch stays retired, and `docs/plans/anti-timing-side-channel.md`
+records why the syscall-hook timing channel is not the trigger.
 `KSU_QUIET`, `KSU_HIDE_MODULE`, and `KSU_HIDE_SELINUX_ORACLE` are enabled.
 Each built APK contains `payload/provenance.json` with the source commits,
 patch digest, build options, and hashes of all staged payloads.
